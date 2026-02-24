@@ -20,3 +20,5 @@ class SalaryScraper(HTTPWebScraper):
     Returns raw dicts preserving original column names.
     """ 
     MLS_SALARY_URL = "https://mlsplayers.org/resources/salary-guide"  
+
+    
