@@ -1,4 +1,4 @@
-from parsers import Parser
+from ingestion.parsers import Parser
 from typing import List, Dict, Any
 import logging
 import csv

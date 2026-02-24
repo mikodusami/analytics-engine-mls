@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from scrapers import Scraper
-from parsers import SalaryParser
+from ingestion.scrapers import Scraper
+from ingestion.parsers import SalaryParser
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any, Optional
-from csv_salary_parser import CSVSalaryParser
+from ingestion.csv_salary_parser import CSVSalaryParser
 import logging
 import re
 
