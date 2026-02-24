@@ -15,8 +15,9 @@ logger = logging.getLogger(__name__)
 class SalaryTransformer:
     """Transforms raw salary rows into normalized records."""
     
-    def __init__(self, year: int):
+    def __init__(self, year: int, source_format: str = "pdf"):
         self.year = year
+        self.source_format = source_format  # "pdf" or "csv"
         self.column_map: dict[str, int] = {}
         self.header_row_idx: int = -1
         self.club_first: bool = True  # Whether club appears before names
@@ -61,6 +62,58 @@ class SalaryTransformer:
     
     def _parse_row(self, row: list[str]) -> Optional[SalaryRecord]:
         """Parse a single data row into a SalaryRecord."""
+        try:
+            # If we have a complete column mapping, use direct index access (CSV mode)
+            if self._has_complete_mapping():
+                return self._parse_row_by_index(row)
+            
+            # Otherwise use heuristic parsing (PDF mode)
+            return self._parse_row_heuristic(row)
+            
+        except Exception as e:
+            logger.debug(f"Failed to parse row {row}: {e}")
+            return None
+    
+    def _has_complete_mapping(self) -> bool:
+        """Check if we have enough column mappings for direct index access."""
+        # Only use index mode for CSV files
+        if self.source_format != "csv":
+            return False
+        
+        required = {"club", "first_name", "last_name", "base_salary", "guaranteed_comp"}
+        return required.issubset(self.column_map.keys())
+    
+    def _parse_row_by_index(self, row: list[str]) -> Optional[SalaryRecord]:
+        """Parse row using direct column index access (for CSV)."""
+        try:
+            club = row[self.column_map["club"]].strip()
+            first_name = clean_name(row[self.column_map["first_name"]])
+            last_name = clean_name(row[self.column_map["last_name"]])
+            base_salary = clean_salary(row[self.column_map["base_salary"]])
+            guaranteed_comp = clean_salary(row[self.column_map["guaranteed_comp"]])
+            
+            position = ""
+            if "position" in self.column_map:
+                position = clean_position(row[self.column_map["position"]])
+            
+            if base_salary is None or guaranteed_comp is None:
+                return None
+            
+            return SalaryRecord(
+                year=self.year,
+                club=club,
+                last_name=last_name,
+                first_name=first_name,
+                position=position,
+                base_salary=base_salary,
+                guaranteed_comp=guaranteed_comp,
+            )
+        except (IndexError, KeyError) as e:
+            logger.debug(f"Index access failed for row {row}: {e}")
+            return None
+    
+    def _parse_row_heuristic(self, row: list[str]) -> Optional[SalaryRecord]:
+        """Parse row using heuristics (for PDF with split tokens)."""
         try:
             # Find salary values first - they anchor our parsing
             salary_indices = self._find_salary_indices(row)
