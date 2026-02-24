@@ -14,7 +14,8 @@ class Scraper(ABC):
     def scrape(self) -> Any:
         pass
     
-    def fetch_content(self, url=None, timeout: int = 30) -> Response:
+    @staticmethod
+    def fetch_content(url=None, timeout: int = 30) -> Response:
         checked_timeout = timeout if timeout and timeout > 0 else 30
         DEFAULT_HEADERS = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"

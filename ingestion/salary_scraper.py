@@ -53,7 +53,7 @@ class SalaryScraper(Scraper):
 
     def discover_sources(self) -> Dict[int, SalarySource]:
         logger.info(f"Discovering salary sources from {self.MLS_SALARY_URL}")
-        response = self.fetch_content(url=self.MLS_SALARY_URL)
+        response = Scraper.fetch_content(url=self.MLS_SALARY_URL)
         soup = BeautifulSoup(response.text, "html.parser")
 
         # find the salary guides
@@ -75,7 +75,7 @@ class SalaryScraper(Scraper):
         source = self._sources[year]
         logger.info(f"Scraping {year} ({source.format}) from {source.url}")
         try:
-            response = self.fetch_content(url=source.url)
+            response = Scraper.fetch_content(url=source.url)
             parser = self._parsers.get(source.format)
             if not parser:
                 logger.error(f"No parser for format: {source.format}")
@@ -120,3 +120,4 @@ class SalaryScraper(Scraper):
             return "pdf"
         logger.debug(f"Format Of {url} Not Found")
         return None
+
