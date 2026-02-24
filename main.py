@@ -1,6 +1,7 @@
 import logging
 import argparse
 import sys
+from ingestion.salary_scraper import SalaryScraper
 
 def setup_logging(level: int = logging.INFO) -> None:
     logging.basicConfig(
@@ -12,7 +13,52 @@ def setup_logging(level: int = logging.INFO) -> None:
 def parse_args():
     parser = argparse.ArgumentParser(description="MLS Analytics Engine")
     parser.add_argument("--debug", action="store_true", help="enable debug logging")
+    subparsers = parser.add_subparsers(dest="command", help="available commands")
+    
+    subparsers.add_parser("discover", help="discover available salary sources")
+
+    scrape_parser = subparsers.add_parser("scrape", help="scrape salary data")
+
+    scrape_parser.add_argument(
+        "--year", type=int, help="specific year to scrape (default: all)"
+    ) 
+    scrape_parser.add_argument(
+        "--split", action="store_true", help="split output by year"
+    )
+    scrape_parser.add_argument(
+        "--output", "-o", default="output", help="output directory"
+    )
     return parser.parse_args()
+
+def cmd_scrape(args, logger) -> int:
+    scraper = SalaryScraper()
+    if args.year:
+        logger.info(f"Scraping year {args.year}")
+        scraper.discover_sources()
+        records = scraper.scrape_year(args.year)
+    else:
+        logger.info("Scraping all available years")
+        records = scraper.scrape()
+    
+    if not records:
+        logger.error("No data scraped")
+        return 1
+
+    logger.info(f"Scraped {len(records)} records")
+
+    ## ingestion phase over
+
+def cmd_discover(args, logger) -> int:
+    """Discover available salary sources."""
+    scraper = SalaryScraper()
+    sources = scraper.discover_sources()
+    
+    logger.info(f"Found {len(sources)} salary sources:")
+    for year in sorted(sources.keys(), reverse=True):
+        src = sources[year]
+        logger.info(f"  {year}: {src.format.upper()} - {src.url[:60]}...")
+    
+    return 0
 
 def main() -> int:
     args = parse_args()
@@ -21,7 +67,13 @@ def main() -> int:
 
     logger.info("MLS Analytics Engine")
     logger.info("Use --help for available commands")
-    return 1
+
+    if args.command == "scrape":
+        return cmd_scrape(args, logger)
+    elif args.command == "discover":
+        return cmd_discover(args, logger)
+    
+    return 0
 
 
 if __name__ == "__main__":
