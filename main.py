@@ -214,12 +214,14 @@ def cmd_analyze(args, logger) -> int:
 
 
 def cmd_roster(args, logger) -> int:
-    """Scrape MLS team rosters and player profiles."""
+    """Scrape MLS team rosters and player profiles (ETL pipeline)."""
     from ingestion.mls_roster_scraper import MLSRosterScraper
+    from transform.mls_roster_transformer import MLSRosterTransformer
     from load.mls_writer import MLSWriter
     
-    logger.info("Starting MLS roster scrape...")
+    logger.info("Starting MLS roster ETL pipeline...")
     
+    # EXTRACT: Scrape raw data
     with MLSRosterScraper(headless=args.headless) as scraper:
         # Discover teams
         teams = scraper.discover_teams()
@@ -227,7 +229,7 @@ def cmd_roster(args, logger) -> int:
         
         # Filter to specific team if requested
         if args.team:
-            teams = [t for t in teams if t.slug == args.team]
+            teams = [t for t in teams if t["slug"] == args.team]
             if not teams:
                 logger.error(f"Team '{args.team}' not found")
                 return 1
@@ -236,23 +238,36 @@ def cmd_roster(args, logger) -> int:
         for team in teams:
             scraper.scrape_team_roster(team)
         
-        players = scraper.players
+        raw_players = scraper.players
+        raw_teams = scraper.teams
     
-    if not players:
+    if not raw_players:
         logger.error("No players scraped")
         return 1
     
-    # Write output
+    logger.info(f"Extracted {len(raw_players)} raw player records")
+    
+    # TRANSFORM: Normalize data
+    transformer = MLSRosterTransformer()
+    players = transformer.transform(raw_players)
+    
+    if not players:
+        logger.error("No players after transformation")
+        return 1
+    
+    logger.info(f"Transformed {len(players)} player records")
+    
+    # LOAD: Write output
     writer = MLSWriter(output_dir=args.output)
     
     if args.format in ("csv", "all"):
         writer.write_players(players, "mls_rosters.csv")
-        writer.write_teams(teams, "mls_teams.csv")
+        writer.write_teams_raw(raw_teams, "mls_teams.csv")
     
     if args.format in ("parquet", "all"):
         writer.write_players_parquet(players, "mls_rosters.parquet")
     
-    logger.info(f"Done! Scraped {len(players)} players from {len(teams)} teams")
+    logger.info(f"Done! ETL complete: {len(players)} players from {len(raw_teams)} teams")
     return 0
 
 
