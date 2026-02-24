@@ -1,4 +1,4 @@
-from ingestion.parsers import Parser
+from ingestion.parsers import SalaryParser
 from typing import List, Dict, Any
 import logging
 import csv
@@ -6,7 +6,7 @@ import io
 
 logger = logging.getLogger(__name__)
 
-class CSVSalaryParser(Parser):
+class CSVSalaryParser(SalaryParser):
 
     def parse(self, content: bytes) -> List[Dict[str, Any]]:
         
