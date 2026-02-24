@@ -13,38 +13,30 @@ class Scraper(ABC):
     @abstractmethod
     def scrape(self) -> Any:
         pass
-
-class HTTPWebScraper(Scraper):
-    DEFAULT_TIMEOUT = 30
-    DEFAULT_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-    } 
-
-    def __init__(self, url: str, timeout: int = DEFAULT_TIMEOUT):
-        super().__init__()
+    
+    def fetch_content(self, url=None, timeout: int = 30) -> Response:
+        checked_timeout = timeout if timeout and timeout > 0 else 30
+        DEFAULT_HEADERS = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        } 
         if not url:
             raise ValueError("URL cannot be empty.")
-        self.url = url
-        self.timeout = timeout
-    
-    def fetch_content(self) -> Response:
-        logger.debug(f"Fetching URL: {self.url}")
+        logger.debug(f"Fetching URL: {url}")
         try:
-            response = requests.get(url=self.url, headers=self.DEFAULT_HEADERS, timeout=self.timeout)
+            response = requests.get(url=url, headers=DEFAULT_HEADERS, timeout=checked_timeout)
             response.raise_for_status()
             # ensure utf-8 encoding
             response.encoding = 'utf-8'
             logger.debug(f"Successfully fetched {len(response.content)} bytes")
             return response
         except Timeout:
-            logger.error(f"Request timed out after {self.timeout}s: {self.url}")
+            logger.error(f"Request timed out after {self.timeout}s: {url}")
             raise
         except HTTPError as e:
-            logger.error(f"HTTP error {e.response.status_code}: {self.url}")
+            logger.error(f"HTTP error {e.response.status_code}: {url}")
             raise
         except RequestException as e:
             logger.error(f"Request failed: {e}")
             raise 
-
 
 
