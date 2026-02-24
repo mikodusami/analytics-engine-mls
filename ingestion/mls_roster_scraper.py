@@ -85,6 +85,7 @@ class MLSRosterScraper(PlaywrightScraper):
             return []
         
         team_players = []
+        seen_urls = set()  # Track seen player URLs to avoid duplicates
         
         for table in tables:
             # Get headers to understand column order
@@ -101,6 +102,12 @@ class MLSRosterScraper(PlaywrightScraper):
                 
                 player_data = self._parse_roster_row(row, cells, headers, team)
                 if player_data:
+                    # Skip duplicates
+                    player_url = player_data.get("player_url", "")
+                    if player_url in seen_urls:
+                        continue
+                    seen_urls.add(player_url)
+                    
                     # Fetch player profile details
                     self._fetch_player_profile(player_data)
                     team_players.append(player_data)
