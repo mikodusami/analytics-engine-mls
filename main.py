@@ -41,6 +41,17 @@ def parse_args():
     analyze_parser.add_argument("--club", type=str, help="filter by club")
     analyze_parser.add_argument("--top", type=int, default=10, help="number of top results")
     
+    # MLS Roster scraping command
+    roster_parser = subparsers.add_parser("roster", help="scrape MLS team rosters and player profiles")
+    roster_parser.add_argument("--output", "-o", default="output", help="output directory")
+    roster_parser.add_argument("--format", choices=["csv", "parquet", "all"], 
+                               default="all", help="output format")
+    roster_parser.add_argument("--team", type=str, help="specific team slug to scrape (e.g., inter-miami-cf)")
+    roster_parser.add_argument("--headless", action="store_true", default=True, 
+                               help="run browser in headless mode")
+    roster_parser.add_argument("--no-headless", dest="headless", action="store_false",
+                               help="show browser window")
+    
     return parser.parse_args()
 
 
@@ -202,6 +213,49 @@ def cmd_analyze(args, logger) -> int:
     return 0
 
 
+def cmd_roster(args, logger) -> int:
+    """Scrape MLS team rosters and player profiles."""
+    from ingestion.mls_roster_scraper import MLSRosterScraper
+    from load.mls_writer import MLSWriter
+    
+    logger.info("Starting MLS roster scrape...")
+    
+    with MLSRosterScraper(headless=args.headless) as scraper:
+        # Discover teams
+        teams = scraper.discover_teams()
+        logger.info(f"Found {len(teams)} teams")
+        
+        # Filter to specific team if requested
+        if args.team:
+            teams = [t for t in teams if t.slug == args.team]
+            if not teams:
+                logger.error(f"Team '{args.team}' not found")
+                return 1
+        
+        # Scrape each team's roster
+        for team in teams:
+            scraper.scrape_team_roster(team)
+        
+        players = scraper.players
+    
+    if not players:
+        logger.error("No players scraped")
+        return 1
+    
+    # Write output
+    writer = MLSWriter(output_dir=args.output)
+    
+    if args.format in ("csv", "all"):
+        writer.write_players(players, "mls_rosters.csv")
+        writer.write_teams(teams, "mls_teams.csv")
+    
+    if args.format in ("parquet", "all"):
+        writer.write_players_parquet(players, "mls_rosters.parquet")
+    
+    logger.info(f"Done! Scraped {len(players)} players from {len(teams)} teams")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     setup_logging(level=logging.DEBUG if args.debug else logging.INFO)
@@ -217,6 +271,8 @@ def main() -> int:
         return cmd_quality(args, logger)
     elif args.command == "analyze":
         return cmd_analyze(args, logger)
+    elif args.command == "roster":
+        return cmd_roster(args, logger)
     else:
         logger.info("Use --help for available commands")
     
