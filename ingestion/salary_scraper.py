@@ -50,8 +50,8 @@ class SalaryScraper(Scraper):
             all_records.extend(records)
 
     def discover_sources(self) -> Dict[int, SalarySource]:
-        logger.info(f"Discovering salary sources from {self.url}")
-        response = self.fetch_content()
+        logger.info(f"Discovering salary sources from {self.MLS_SALARY_URL}")
+        response = self.fetch_content(url=self.MLS_SALARY_URL)
         soup = BeautifulSoup(response.text, "html.parser")
 
         # find the salary guides
@@ -98,7 +98,7 @@ class SalaryScraper(Scraper):
         year = self._extract_year(text) or self._extract_year(href)
         if not year:
             return
-        format = self._detect_format()
+        format = self._detect_format(url=self.MLS_SALARY_URL)
         if format:
             self._sources[year] = SalarySource(year=year, url=href, format=format)
             logger.debug(f"Found {year} ({format}): {href}")
