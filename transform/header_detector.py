@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Keywords that indicate a header row
+# Keywords that indicate a header row (check in full cell text, not just tokens)
 HEADER_KEYWORDS = {"club", "team", "last", "first", "name", "salary", "position", "pos", "base", "guaranteed", "comp", "compensation"}
 
 # Keywords that indicate a title/metadata row (not a header)
@@ -23,13 +23,18 @@ def find_header_row(rows: list[list[str]]) -> int:
         if not row:
             continue
         
+        # Join all cells and check for keywords in the full text
+        row_text = " ".join(cell.lower() for cell in row)
         row_lower = [cell.lower() for cell in row]
         
-        # Count header keywords
-        header_matches = sum(1 for keyword in HEADER_KEYWORDS if keyword in row_lower)
+        # Count header keywords (check both individual cells and full text)
+        header_matches = 0
+        for keyword in HEADER_KEYWORDS:
+            if keyword in row_lower or keyword in row_text:
+                header_matches += 1
         
         # Count exclude keywords
-        exclude_matches = sum(1 for keyword in EXCLUDE_KEYWORDS if keyword in row_lower)
+        exclude_matches = sum(1 for keyword in EXCLUDE_KEYWORDS if keyword in row_text)
         
         # If we have many header keywords (5+), it's likely a header even with some excludes
         # If we have 3-4 header keywords, only accept if no excludes
@@ -44,40 +49,35 @@ def find_header_row(rows: list[list[str]]) -> int:
 def detect_column_order(header_row: list[str]) -> dict[str, int]:
     """
     Analyze header row and return mapping of field -> column index.
-    Handles multi-token headers like ['First', 'Name'].
+    Handles both single-word and multi-word headers like 'First Name', 'Team Name'.
     """
-    header_lower = [h.lower() for h in header_row]
-    header_text = " ".join(header_lower)
-    
     mapping = {}
     
-    # Detect club/team position
-    for i, h in enumerate(header_lower):
-        if h in ("club", "team"):
+    for i, h in enumerate(header_row):
+        h_lower = h.lower().strip()
+        
+        # Club/Team
+        if h_lower in ("club", "team", "team name"):
             mapping["club"] = i
-            break
-    
-    # Detect name columns - look for patterns
-    for i, h in enumerate(header_lower):
-        if h == "last":
+        
+        # Names
+        elif h_lower in ("last", "last name"):
             mapping["last_name"] = i
-        elif h == "first":
+        elif h_lower in ("first", "first name"):
             mapping["first_name"] = i
-    
-    # Detect position
-    for i, h in enumerate(header_lower):
-        if h in ("pos", "position"):
+        
+        # Position
+        elif h_lower in ("pos", "position"):
             mapping["position"] = i
-            break
-    
-    # Detect salary columns - trickier due to multi-token headers
-    # Look for "base" followed by "salary" or just "salary"
-    for i, h in enumerate(header_lower):
-        if h == "base" and "base_salary" not in mapping:
+        
+        # Salaries - check for various patterns
+        elif "base" in h_lower and "salary" in h_lower:
             mapping["base_salary"] = i
-        elif h == "guaranteed" or h.startswith("guar"):
+        elif h_lower == "base":
+            mapping["base_salary"] = i
+        elif "guaranteed" in h_lower:
             mapping["guaranteed_comp"] = i
-        elif h in ("compensation", "comp", "comp."):
+        elif h_lower in ("compensation", "comp", "comp."):
             if "guaranteed_comp" not in mapping:
                 mapping["guaranteed_comp"] = i
     
