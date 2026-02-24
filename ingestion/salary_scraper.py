@@ -48,6 +48,8 @@ class SalaryScraper(Scraper):
         for year in sorted(self._sources.keys(), reverse=True):
             records = self.scrape_year(year)
             all_records.extend(records)
+        logger.info(f"Total: {len(all_records)} records across {len(self._sources)} years")
+        return all_records
 
     def discover_sources(self) -> Dict[int, SalarySource]:
         logger.info(f"Discovering salary sources from {self.MLS_SALARY_URL}")
@@ -73,7 +75,7 @@ class SalaryScraper(Scraper):
         source = self._sources[year]
         logger.info(f"Scraping {year} ({source.format}) from {source.url}")
         try:
-            response = self.fetch_content(url=self.MLS_SALARY_URL)
+            response = self.fetch_content(url=source.url)
             parser = self._parsers.get(source.format)
             if not parser:
                 logger.error(f"No parser for format: {source.format}")
@@ -98,7 +100,7 @@ class SalaryScraper(Scraper):
         year = self._extract_year(text) or self._extract_year(href)
         if not year:
             return
-        format = self._detect_format(url=self.MLS_SALARY_URL)
+        format = self._detect_format(url=href)
         if format:
             self._sources[year] = SalarySource(year=year, url=href, format=format)
             logger.debug(f"Found {year} ({format}): {href}")

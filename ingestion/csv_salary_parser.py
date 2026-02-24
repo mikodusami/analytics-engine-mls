@@ -23,7 +23,7 @@ class CSVSalaryParser(SalaryParser):
         if not reader.fieldnames:
             logger.warning("csv has no headers")
             return []
-        logger.debug(f"CSV columns: {reader.fieldnames}") 
+        logger.info(f"CSV columns: {reader.fieldnames}") 
 
         # clean each row and append the cleaned row to our records
         for row in reader:
