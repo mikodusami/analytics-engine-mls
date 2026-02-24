@@ -87,8 +87,41 @@ def normalize_club(tokens: list[str]) -> tuple[str, int]:
     for length in range(min(4, len(tokens)), 0, -1):
         candidate = " ".join(tokens[:length]).lower()
         if candidate in KNOWN_CLUBS:
-            # Return with proper capitalization
-            return candidate.title(), length
+            # Return canonical name from CANONICAL_NAMES
+            return CANONICAL_NAMES.get(candidate, candidate.title()), length
     
     # Fallback: return first token as-is
     return tokens[0], 1
+
+
+# Canonical club names for consistent output
+CANONICAL_NAMES = {
+    "atlanta united": "Atlanta United",
+    "austin fc": "Austin FC",
+    "cf montreal": "CF Montréal",
+    "chicago fire": "Chicago Fire",
+    "chivas usa": "Chivas USA",
+    "colorado rapids": "Colorado Rapids",
+    "columbus crew": "Columbus Crew",
+    "dc united": "D.C. United",
+    "fc cincinnati": "FC Cincinnati",
+    "fc dallas": "FC Dallas",
+    "houston dynamo": "Houston Dynamo",
+    "inter miami": "Inter Miami CF",
+    "la galaxy": "LA Galaxy",
+    "los angeles fc": "Los Angeles FC",
+    "minnesota united": "Minnesota United",
+    "nashville sc": "Nashville SC",
+    "new england revolution": "New England Revolution",
+    "new york city fc": "New York City FC",
+    "new york red bulls": "New York Red Bulls",
+    "orlando city": "Orlando City SC",
+    "philadelphia union": "Philadelphia Union",
+    "portland timbers": "Portland Timbers",
+    "real salt lake": "Real Salt Lake",
+    "san jose earthquakes": "San Jose Earthquakes",
+    "seattle sounders": "Seattle Sounders FC",
+    "sporting kansas city": "Sporting Kansas City",
+    "toronto fc": "Toronto FC",
+    "vancouver whitecaps": "Vancouver Whitecaps FC",
+}
