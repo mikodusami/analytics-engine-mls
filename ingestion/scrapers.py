@@ -1,17 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
 import logging
 import requests
 from requests import Response
 from requests.exceptions import RequestException, Timeout, HTTPError 
-from dataclasses import dataclass
-from bs4 import BeautifulSoup
+from typing import Any
+
 
 logger = logging.getLogger(__name__)  
 
 class Scraper(ABC):
     
-    def scrape(self):
+    @abstractmethod
+    def scrape(self) -> Any:
         pass
 
 class HTTPWebScraper(Scraper):
@@ -48,20 +48,3 @@ class HTTPWebScraper(Scraper):
 
 
 
-@dataclass
-class SalarySource:
-    year: int # year of the salary source
-    url: str # the url of the salary source
-    format: str # the format (html, csv, pdf)
-
-class SalaryScraper(HTTPWebScraper):
-    """
-    Scraper for MLS player salary data across all available years.
-    
-    Discovers historical links on the salary guide page and routes
-    each to the appropriate parser based on content type.
-    Returns raw dicts preserving original column names.
-    """ 
-    MLS_SALARY_URL = "https://mlsplayers.org/resources/salary-guide"  
-
- 
