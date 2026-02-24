@@ -1,15 +1,14 @@
-# Debug 2023 position issue
+# Debug CSV format for 2024/2025
 from ingestion.scrapers import Scraper
-from ingestion.pdf_salary_parser import PDFSalaryParser
+from ingestion.csv_salary_parser import CSVSalaryParser
 
-pdf_parser = PDFSalaryParser()
+csv_parser = CSVSalaryParser()
 
-url = "https://s3.amazonaws.com/mlspa/2023-Salary-Report-as-of-Sept-15-2023.pdf?mtime=20231018173909"
+url = "http://s3.amazonaws.com/mlspa/MLS-Salary-List-10-2025-REVISED.csv?mtime=20251029164256"
 response = Scraper.fetch_content(url=url)
-rows = pdf_parser.parse(response.content)
+rows = csv_parser.parse(response.content)
 
-print("Header row:")
-print(rows[0])
-print("\nFirst 3 data rows:")
-for row in rows[1:4]:
-    print(row)
+print(f"Total rows: {len(rows)}")
+print("\nFirst 5 rows:")
+for i, row in enumerate(rows[:5]):
+    print(f"  {i}: {row}")
