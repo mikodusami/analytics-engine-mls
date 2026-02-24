@@ -35,18 +35,22 @@ def cmd_scrape(args, logger) -> int:
     if args.year:
         logger.info(f"Scraping year {args.year}")
         scraper.discover_sources()
-        records = scraper.scrape_year(args.year)
+        rows = scraper.scrape_year(args.year)
+        if not rows:
+            logger.error("No data scraped")
+            return 1
+        logger.info(f"Scraped {len(rows)} rows for {args.year}")
     else:
         logger.info("Scraping all available years")
-        records = scraper.scrape()
-    
-    if not records:
-        logger.error("No data scraped")
-        return 1
-
-    logger.info(f"Scraped {len(records)} records")
+        records_by_year = scraper.scrape()
+        if not records_by_year:
+            logger.error("No data scraped")
+            return 1
+        total_rows = sum(len(rows) for rows in records_by_year.values())
+        logger.info(f"Scraped {total_rows} rows across {len(records_by_year)} years")
 
     ## ingestion phase over
+    return 0
 
 def cmd_discover(args, logger) -> int:
     """Discover available salary sources."""

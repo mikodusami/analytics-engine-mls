@@ -4,6 +4,7 @@ from ingestion.parsers import SalaryParser
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any, Optional
 from ingestion.csv_salary_parser import CSVSalaryParser
+from ingestion.pdf_salary_parser import PDFSalaryParser
 import logging
 import re
 
@@ -30,7 +31,7 @@ class SalaryScraper(Scraper):
         self._records_by_year: Dict[int, List[Dict[str, Any]]] = {}
         self._parsers: Dict[str, SalaryParser] = {
             'csv': CSVSalaryParser(),
-            'pdf': None
+            'pdf': PDFSalaryParser()
         }
         
     
@@ -39,17 +40,16 @@ class SalaryScraper(Scraper):
         return self._sources
     
     @property
-    def records_by_year(self) -> Dict[int, List[Dict[str, Any]]]:
+    def records_by_year(self) -> Dict[int, List[List[str]]]:
         return self._records_by_year
 
-    def scrape(self) -> List[Dict[str, Any]]:
-        all_records = []
+    def scrape(self) -> Dict[int, List[List[str]]]:
+        """Scrape all discovered sources, returns dict of year -> rows."""
         self.discover_sources()
         for year in sorted(self._sources.keys(), reverse=True):
-            records = self.scrape_year(year)
-            all_records.extend(records)
-        logger.info(f"Total: {len(all_records)} records across {len(self._sources)} years")
-        return all_records
+            self.scrape_year(year)
+        logger.info(f"Total: {len(self._records_by_year)} years scraped")
+        return self._records_by_year
 
     def discover_sources(self) -> Dict[int, SalarySource]:
         logger.info(f"Discovering salary sources from {self.MLS_SALARY_URL}")
@@ -67,7 +67,7 @@ class SalaryScraper(Scraper):
         logger.info(f"Discovered {len(self._sources)} sources: {sorted(self._sources.keys())}")
         return self._sources
 
-    def scrape_year(self, year: int) -> List[Dict[str, Any]]:
+    def scrape_year(self, year: int) -> List[List[str]]:
         if year not in self._sources:
             logger.warning(f"No source found for year {year}")
             return []
@@ -80,13 +80,11 @@ class SalaryScraper(Scraper):
             if not parser:
                 logger.error(f"No parser for format: {source.format}")
                 return []
-            records = parser.parse(response.content)
-            # adding a column for the year
-            for record in records:
-                record["_year"] = year 
+            rows = parser.parse(response.content)
+            self._records_by_year[year] = rows
             
-            logger.info(f"Year {year}: parsed {len(records)} records")
-            return records
+            logger.info(f"Year {year}: parsed {len(rows)} rows")
+            return rows
         except Exception as e:
             logger.error(f"Failed to scrape {year}: {e}")
             return [] 

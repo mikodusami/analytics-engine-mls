@@ -31,7 +31,7 @@ class Scraper(ABC):
             logger.debug(f"Successfully fetched {len(response.content)} bytes")
             return response
         except Timeout:
-            logger.error(f"Request timed out after {self.timeout}s: {url}")
+            logger.error(f"Request timed out after {checked_timeout}s: {url}")
             raise
         except HTTPError as e:
             logger.error(f"HTTP error {e.response.status_code}: {url}")
