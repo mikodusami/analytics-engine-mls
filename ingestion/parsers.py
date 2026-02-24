@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-class Parser(ABC):
+class SalaryParser(ABC):
     @abstractmethod
     def parse(self, content: bytes) -> List[Dict[str, Any]]:
         """
