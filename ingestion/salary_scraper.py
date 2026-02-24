@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from scrapers import HTTPWebScraper
+from parsers import SalaryParser
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any, Optional
-
+from csv_salary_parser import CSVSalaryParser
 
 @dataclass
 class SalarySource:
@@ -20,4 +21,19 @@ class SalaryScraper(HTTPWebScraper):
     """ 
     MLS_SALARY_URL = "https://mlsplayers.org/resources/salary-guide"  
 
- 
+    def __init__(self, url: str = None):
+        super().__init__(url=url or self.MLS_SALARY_URL)
+        self._sources: Dict[int, SalarySource] = {}
+        self._records_by_year: Dict[int, List[Dict[str, Any]]] = {}
+        self._parsers: Dict[str, SalaryParser] = {
+            'csv': CSVSalaryParser()
+        }
+    
+    @property
+    def sources(self) -> Dict[int, SalarySource]:
+        return self._sources
+    
+    @property
+    def records_by_year(self) -> Dict[int, List[Dict[str, Any]]]:
+        return self._records_by_year
+
