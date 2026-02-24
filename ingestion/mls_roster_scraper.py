@@ -49,20 +49,28 @@ class MLSRosterScraper(PlaywrightScraper):
     def discover_teams(self) -> List[MLSTeam]:
         """Discover all teams from the players page."""
         logger.info(f"Discovering teams from {self.PLAYERS_URL}")
-        html = self.navigate(self.PLAYERS_URL, wait_selector=".mls-c-club-nav")
+        html = self.navigate(self.PLAYERS_URL)
         soup = BeautifulSoup(html, "html.parser")
         
-        # Find team navigation - each team has roster/stats links
-        team_items = soup.select(".mls-c-club-nav__item, .mls-c-club-list__item")
+        # Find all links that contain /clubs/ and /roster/
+        all_links = soup.find_all("a", href=True)
         
-        if not team_items:
-            # Try alternative selector for team links
-            team_items = soup.find_all("li", class_=lambda x: x and "club" in x.lower())
-        
-        for item in team_items:
-            team = self._parse_team_item(item)
-            if team:
-                self._teams.append(team)
+        seen_slugs = set()
+        for link in all_links:
+            href = link.get("href", "")
+            # Look for roster links like /clubs/inter-miami-cf/roster/
+            match = re.search(r"/clubs/([^/]+)/roster", href)
+            if match:
+                team_slug = match.group(1)
+                if team_slug not in seen_slugs:
+                    seen_slugs.add(team_slug)
+                    team = MLSTeam(
+                        name=team_slug.replace("-", " ").title(),
+                        slug=team_slug,
+                        roster_url=f"{self.BASE_URL}/clubs/{team_slug}/roster/",
+                        stats_url=f"{self.BASE_URL}/clubs/{team_slug}/stats/",
+                    )
+                    self._teams.append(team)
         
         logger.info(f"Discovered {len(self._teams)} teams")
         return self._teams
@@ -70,17 +78,20 @@ class MLSRosterScraper(PlaywrightScraper):
     def scrape_team_roster(self, team: MLSTeam) -> List[MLSPlayer]:
         """Scrape roster for a single team."""
         logger.info(f"Scraping roster for {team.name}: {team.roster_url}")
-        html = self.navigate(team.roster_url, wait_selector=".mls-o-table")
+        html = self.navigate(team.roster_url)
         soup = BeautifulSoup(html, "html.parser")
         
-        # Find roster table
-        table = soup.select_one(".mls-o-table, table")
+        # Find roster table - try multiple selectors
+        table = soup.select_one("table, .mls-o-table, [class*='roster']")
         if not table:
             logger.warning(f"No roster table found for {team.name}")
             return []
         
         # Parse each player row
-        rows = table.select("tbody tr, .mls-o-table__row")
+        rows = table.select("tbody tr, tr[class*='row']")
+        if not rows:
+            rows = table.find_all("tr")[1:]  # Skip header row
+        
         team_players = []
         
         for row in rows:
@@ -207,7 +218,7 @@ class MLSRosterScraper(PlaywrightScraper):
         
         try:
             logger.debug(f"Fetching profile: {player.player_url}")
-            html = self.navigate(player.player_url, wait_selector=".mls-c-player-header, .player-details")
+            html = self.navigate(player.player_url)
             soup = BeautifulSoup(html, "html.parser")
             
             details = {}

@@ -14,7 +14,7 @@ class PlaywrightScraper(ABC):
     
     BASE_URL = ""
     
-    def __init__(self, headless: bool = True, timeout: int = 30000):
+    def __init__(self, headless: bool = True, timeout: int = 60000):
         self.headless = headless
         self.timeout = timeout
         self._browser: Optional[Browser] = None
@@ -60,9 +60,15 @@ class PlaywrightScraper(ABC):
     def navigate(self, url: str, wait_selector: Optional[str] = None) -> str:
         """Navigate to URL and return page HTML."""
         logger.debug(f"Navigating to: {url}")
-        self.page.goto(url, wait_until="networkidle")
+        self.page.goto(url, wait_until="domcontentloaded")
+        # Give dynamic content time to load
+        self.page.wait_for_load_state("load")
         if wait_selector:
-            self.page.wait_for_selector(wait_selector, timeout=self.timeout)
+            try:
+                self.page.wait_for_selector(wait_selector, timeout=self.timeout)
+            except Exception:
+                # Selector not found, continue anyway
+                logger.debug(f"Selector {wait_selector} not found, continuing")
         return self.page.content()
     
     def get_html(self) -> str:
