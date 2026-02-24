@@ -33,7 +33,8 @@ class MLSWriter:
         base_fields = [
             "team_name", "team_slug", "player_name", "player_url",
             "jersey_number", "position", "roster_category",
-            "player_category", "player_status"
+            "player_category", "player_status",
+            "player_image_thumb", "player_image", "team_logo"
         ]
         profile_fields = [f"profile_{f}" for f in sorted(all_profile_fields)]
         fieldnames = base_fields + profile_fields

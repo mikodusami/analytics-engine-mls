@@ -63,6 +63,7 @@ class PlaywrightScraper(ABC):
         self.page.goto(url, wait_until="domcontentloaded")
         # Give dynamic content time to load
         self.page.wait_for_load_state("load")
+        self.page.wait_for_timeout(1000)  # Wait 1s for JS rendering
         if wait_selector:
             try:
                 self.page.wait_for_selector(wait_selector, timeout=self.timeout)

@@ -62,6 +62,9 @@ class MLSRosterTransformer:
                 roster_category=self._clean_value(roster_category),
                 player_category=self._clean_value(player_category),
                 player_status=self._clean_value(raw.get("player_status")),
+                player_image_thumb=raw.get("player_image_thumb"),
+                player_image=raw.get("player_image"),
+                team_logo=raw.get("team_logo"),
                 profile_details=profile_details,
             )
             

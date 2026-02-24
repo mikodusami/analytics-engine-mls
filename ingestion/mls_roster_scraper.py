@@ -135,6 +135,12 @@ class MLSRosterScraper(PlaywrightScraper):
             name_elem = player_link.select_one(".short-name, .mls-o-table__player-name")
             player_name = name_elem.get_text(strip=True) if name_elem else player_link.get_text(strip=True)
             
+            # Get player thumbnail image from roster table
+            player_thumb = None
+            img = player_link.select_one("img")
+            if img:
+                player_thumb = img.get("src")
+            
             # Get cell texts
             cell_texts = [c.get_text(strip=True) for c in cells]
             
@@ -144,6 +150,7 @@ class MLSRosterScraper(PlaywrightScraper):
                 "team_slug": team["slug"],
                 "player_name": player_name,
                 "player_url": player_url,
+                "player_image_thumb": player_thumb,
             }
             
             # Map each header to its value
@@ -193,15 +200,21 @@ class MLSRosterScraper(PlaywrightScraper):
         """
         Parse masthead section.
         Contains: Player image, jersey #, position, club name/logo
-        Example text: "Lionel Messi#10 • Midfielder •Inter Miami CFSenior"
         """
         try:
-            # Get full name from image alt
-            img = masthead.select_one("img[alt]")
-            if img:
-                player_data["full_name"] = img.get("alt", "").strip()
+            # Get player image (large version from profile)
+            player_img = masthead.select_one(".mls-o-masthead__branded-image img")
+            if player_img:
+                player_data["player_image"] = player_img.get("src")
+                if not player_data.get("full_name"):
+                    player_data["full_name"] = player_img.get("alt", "").strip()
             
-            # Get club link/name
+            # Get club logo
+            club_logo = masthead.select_one(".mls-o-masthead__club-logo img")
+            if club_logo:
+                player_data["team_logo"] = club_logo.get("src")
+            
+            # Get club link/slug
             club_link = masthead.select_one("a.mls-o-masthead__club-logo")
             if club_link:
                 club_href = club_link.get("href", "")

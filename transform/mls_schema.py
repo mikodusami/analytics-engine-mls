@@ -17,6 +17,9 @@ class MLSPlayer:
     roster_category: Optional[str] = None
     player_category: Optional[str] = None
     player_status: Optional[str] = None
+    player_image_thumb: Optional[str] = None  # Small image from roster table
+    player_image: Optional[str] = None  # Large image from profile page
+    team_logo: Optional[str] = None  # Team logo from profile page
     profile_details: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> dict:
@@ -31,6 +34,9 @@ class MLSPlayer:
             "roster_category": self.roster_category,
             "player_category": self.player_category,
             "player_status": self.player_status,
+            "player_image_thumb": self.player_image_thumb,
+            "player_image": self.player_image,
+            "team_logo": self.team_logo,
         }
         # Flatten profile details into the dict
         for key, value in self.profile_details.items():
