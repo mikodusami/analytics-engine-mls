@@ -186,19 +186,29 @@ class MLSStatsScraper(PlaywrightScraper):
             if not table:
                 return []
             
-            # Get headers (skip first which is stat type name)
-            headers = []
+            # Get headers from TH class names (more reliable than text)
+            # Classes like: player, club, games_played, goal_assist, etc.
+            header_keys = []
             for th in table.find_all("th"):
-                text = th.get_text(strip=True).lower()
-                if text and text not in ["general", "passing", "attacking", "defending", "goalkeeping"]:
-                    headers.append(text)
+                classes = th.get("class", [])
+                # Find the meaningful class (not mls-o-table__header or sorted)
+                key = None
+                for cls in classes:
+                    if cls not in ["mls-o-table__header", "mls-o-table__header--sorted", "stats-type"]:
+                        key = cls
+                        break
+                if key:
+                    header_keys.append(key)
             
-            if not headers:
+            if not header_keys:
                 return []
             
-            # Parse data rows
+            logger.debug(f"Header keys: {header_keys}")
+            
+            # Parse data rows from tbody
             stats_records = []
-            rows = table.find_all("tr")
+            tbody = table.select_one("tbody")
+            rows = tbody.find_all("tr") if tbody else table.find_all("tr")[2:]  # Skip header rows
             
             for row in rows:
                 cells = row.find_all("td")
@@ -223,16 +233,20 @@ class MLSStatsScraper(PlaywrightScraper):
                 if img:
                     player_image = img.get("src")
                 
-                # Map cell values to headers
-                cell_texts = [c.get_text(strip=True) for c in cells]
-                
+                # Map cell values to header keys using cell class names
                 stats_data = {}
-                for i, header in enumerate(headers):
-                    if i < len(cell_texts):
-                        # Skip player column (already extracted)
-                        if header == "player":
-                            continue
-                        stats_data[header] = cell_texts[i] if cell_texts[i] else None
+                for cell in cells:
+                    cell_classes = cell.get("class", [])
+                    # Find the meaningful class
+                    cell_key = None
+                    for cls in cell_classes:
+                        if cls not in ["mls-o-table__cell", "mls-o-table__cell--sorted"]:
+                            cell_key = cls
+                            break
+                    
+                    if cell_key and cell_key not in ["player"]:  # Skip player column
+                        text = cell.get_text(strip=True)
+                        stats_data[cell_key] = text if text else None
                 
                 record = {
                     "team_name": team["name"],
