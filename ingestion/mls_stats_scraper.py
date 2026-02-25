@@ -234,6 +234,8 @@ class MLSStatsScraper(PlaywrightScraper):
                     player_image = img.get("src")
                 
                 # Map cell values to header keys using cell class names
+                # Prefix with stat type (e.g., general_games_played, passing_accurate_pass)
+                stat_type_prefix = stat_type.replace("STATS_", "").lower()
                 stats_data = {}
                 for cell in cells:
                     cell_classes = cell.get("class", [])
@@ -244,9 +246,15 @@ class MLSStatsScraper(PlaywrightScraper):
                             cell_key = cls
                             break
                     
-                    if cell_key and cell_key not in ["player"]:  # Skip player column
+                    if cell_key and cell_key not in ["player", "club"]:  # Skip player/club columns
                         text = cell.get_text(strip=True)
-                        stats_data[cell_key] = text if text else None
+                        # Prefix with stat type
+                        prefixed_key = f"{stat_type_prefix}_{cell_key}"
+                        stats_data[prefixed_key] = text if text else None
+                
+                # Extract club separately (not prefixed)
+                club_cell = row.select_one("td.club")
+                club = club_cell.get_text(strip=True) if club_cell else None
                 
                 record = {
                     "team_name": team["name"],
@@ -256,6 +264,7 @@ class MLSStatsScraper(PlaywrightScraper):
                     "player_name": player_name,
                     "player_url": player_url,
                     "player_image": player_image,
+                    "club": club,
                     "stats": stats_data,
                 }
                 

@@ -31,15 +31,15 @@ class MLSStatsTransformer:
             if not player_name:
                 return None
             
-            # Clean stats values
+            # Clean stats values (already prefixed with stat type)
             stats = {}
             raw_stats = raw.get("stats", {})
             for key, value in raw_stats.items():
                 clean_key = self._normalize_key(key)
                 stats[clean_key] = self._clean_stat_value(value)
             
-            # Get club from stats
-            club = stats.pop("club", "") or ""
+            # Get club from raw data
+            club = raw.get("club", "") or ""
             
             # Clean profile details
             profile_details = {}
