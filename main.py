@@ -52,6 +52,21 @@ def parse_args():
     roster_parser.add_argument("--no-headless", dest="headless", action="store_false",
                                help="show browser window")
     
+    # MLS Stats scraping command
+    stats_parser = subparsers.add_parser("stats", help="scrape MLS team player stats by season")
+    stats_parser.add_argument("--output", "-o", default="output", help="output directory")
+    stats_parser.add_argument("--format", choices=["csv", "parquet", "all"], 
+                               default="all", help="output format")
+    stats_parser.add_argument("--team", type=str, help="specific team slug to scrape (e.g., atlanta-united)")
+    stats_parser.add_argument("--season", type=int, action="append", dest="seasons",
+                               help="specific season(s) to scrape (can be repeated)")
+    stats_parser.add_argument("--no-profiles", dest="fetch_profiles", action="store_false", default=True,
+                               help="skip fetching player profile details (faster)")
+    stats_parser.add_argument("--headless", action="store_true", default=True, 
+                               help="run browser in headless mode")
+    stats_parser.add_argument("--no-headless", dest="headless", action="store_false",
+                               help="show browser window")
+    
     return parser.parse_args()
 
 
@@ -271,6 +286,63 @@ def cmd_roster(args, logger) -> int:
     return 0
 
 
+def cmd_stats(args, logger) -> int:
+    """Scrape MLS team player stats by season (ETL pipeline)."""
+    from ingestion.mls_stats_scraper import MLSStatsScraper
+    from transform.mls_stats_transformer import MLSStatsTransformer
+    from load.mls_stats_writer import MLSStatsWriter
+    
+    logger.info("Starting MLS stats ETL pipeline...")
+    
+    # EXTRACT: Scrape raw data
+    with MLSStatsScraper(headless=args.headless, fetch_profiles=args.fetch_profiles) as scraper:
+        # Discover teams
+        teams = scraper.discover_teams()
+        logger.info(f"Found {len(teams)} teams")
+        
+        # Filter to specific team if requested
+        if args.team:
+            teams = [t for t in teams if t["slug"] == args.team]
+            if not teams:
+                logger.error(f"Team '{args.team}' not found")
+                return 1
+        
+        # Scrape each team's stats
+        for team in teams:
+            scraper.scrape_team_stats(team, seasons=args.seasons)
+        
+        raw_stats = scraper.stats
+        raw_teams = scraper.teams
+    
+    if not raw_stats:
+        logger.error("No stats scraped")
+        return 1
+    
+    logger.info(f"Extracted {len(raw_stats)} raw stats records")
+    
+    # TRANSFORM: Normalize data
+    transformer = MLSStatsTransformer()
+    stats = transformer.transform(raw_stats)
+    
+    if not stats:
+        logger.error("No stats after transformation")
+        return 1
+    
+    logger.info(f"Transformed {len(stats)} stats records")
+    
+    # LOAD: Write output
+    writer = MLSStatsWriter(output_dir=args.output)
+    
+    if args.format in ("csv", "all"):
+        writer.write_stats(stats, "mls_player_stats.csv")
+    
+    if args.format in ("parquet", "all"):
+        writer.write_stats_parquet(stats, "mls_player_stats.parquet")
+    
+    logger.info(f"Done! ETL complete: {len(stats)} stats records from {len(raw_teams)} teams")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     setup_logging(level=logging.DEBUG if args.debug else logging.INFO)
@@ -288,6 +360,8 @@ def main() -> int:
         return cmd_analyze(args, logger)
     elif args.command == "roster":
         return cmd_roster(args, logger)
+    elif args.command == "stats":
+        return cmd_stats(args, logger)
     else:
         logger.info("Use --help for available commands")
     
