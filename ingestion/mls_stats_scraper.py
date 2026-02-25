@@ -168,10 +168,10 @@ class MLSStatsScraper(PlaywrightScraper):
             logger.debug(f"Failed to select season {season}: {e}")
     
     def _select_stat_type(self, stat_type: str) -> None:
-        """Select a stat type from the dropdown."""
+        """Select a stat type from the mobile dropdown."""
         try:
-            stat_select = self.page.locator("select.mobile").first
-            stat_select.select_option(stat_type)
+            stat_select = self.page.locator("select.mobile")
+            stat_select.first.select_option(stat_type)
             self.page.wait_for_timeout(1500)
         except Exception as e:
             logger.debug(f"Failed to select stat type {stat_type}: {e}")
