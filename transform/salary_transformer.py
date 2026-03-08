@@ -306,38 +306,6 @@ class SalaryTransformer:
                 return i
         return -1
 
-    def _split_names(self, name_tokens: list[str]) -> tuple[str, str]:
-        """
-        Split name tokens into (first_name, last_name).
-        
-        Uses header column order to determine which comes first.
-        """
-        if not name_tokens:
-            return "", ""
-        
-        if len(name_tokens) == 1:
-            return "", clean_name(name_tokens[0])
-        
-        # Check column order from header
-        last_idx = self.column_map.get("last_name", -1)
-        first_idx = self.column_map.get("first_name", -1)
-        
-        if last_idx != -1 and first_idx != -1:
-            # Use header order
-            if last_idx < first_idx:
-                # Last name comes first
-                last_name = clean_name(name_tokens[0])
-                first_name = clean_name(" ".join(name_tokens[1:]))
-            else:
-                # First name comes first
-                first_name = clean_name(name_tokens[0])
-                last_name = clean_name(" ".join(name_tokens[1:]))
-        else:
-            # Default: assume last_name first (most common in older data)
-            last_name = clean_name(name_tokens[0])
-            first_name = clean_name(" ".join(name_tokens[1:]))
-        
-        return first_name, last_name
     
     def _looks_like_position(self, token: str) -> bool:
         """Check if token looks like a position code."""
