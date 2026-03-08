@@ -1,5 +1,11 @@
 """
 Data quality checks and validation.
+
+This module tells you how f**ked your data is. Missing values, outliers,
+duplicates, weird positions - we check for all of it.
+
+Run this after ETL to see if something went wrong. Spoiler: something
+probably went wrong. Data is never clean.
 """
 import pandas as pd
 import logging
@@ -9,13 +15,38 @@ logger = logging.getLogger(__name__)
 
 
 class DataQualityChecker:
-    """Validates and reports on data quality issues."""
+    """
+    Validates and reports on data quality issues.
+    
+    Runs a battery of checks on salary data:
+    - Missing values (nulls and empty strings)
+    - Salary outliers (using IQR method)
+    - Invalid/missing positions
+    - Duplicate player entries
+    - Club name variations
+    
+    Usage:
+        checker = DataQualityChecker(df)
+        checker.print_report()  # Human-readable report
+        results = checker.run_all_checks()  # Programmatic access
+    """
     
     def __init__(self, df: pd.DataFrame):
+        """
+        Initialize with a DataFrame to check.
+        
+        Args:
+            df: pandas DataFrame with salary data
+        """
         self.df = df
     
     def run_all_checks(self) -> Dict[str, Any]:
-        """Run all data quality checks."""
+        """
+        Run all data quality checks.
+        
+        Returns:
+            Dict with results from each check
+        """
         return {
             "missing_values": self.check_missing_values(),
             "salary_outliers": self.check_salary_outliers(),
@@ -26,7 +57,12 @@ class DataQualityChecker:
         }
     
     def check_missing_values(self) -> Dict[str, int]:
-        """Check for missing values in each column."""
+        """
+        Check for missing values in each column.
+        
+        Checks both null values (NaN) and empty strings (which pandas
+        doesn't consider null but are effectively missing).
+        """
         missing = self.df.isnull().sum()
         empty_strings = (self.df == "").sum()
         return {
@@ -35,7 +71,16 @@ class DataQualityChecker:
         }
     
     def check_salary_outliers(self) -> Dict[str, Any]:
-        """Identify potential salary outliers."""
+        """
+        Identify potential salary outliers using IQR method.
+        
+        IQR (Interquartile Range) method:
+        - Q1 = 25th percentile, Q3 = 75th percentile
+        - IQR = Q3 - Q1
+        - Outliers are below Q1 - 1.5*IQR or above Q3 + 1.5*IQR
+        
+        Also checks for zero and negative salaries (which are probably errors).
+        """
         salary = self.df["guaranteed_comp"]
         q1, q3 = salary.quantile([0.25, 0.75])
         iqr = q3 - q1
@@ -53,7 +98,12 @@ class DataQualityChecker:
         }
     
     def check_invalid_positions(self) -> Dict[str, Any]:
-        """Check for missing or unusual positions."""
+        """
+        Check for missing or unusual positions.
+        
+        Position data is often messy - some years don't have it at all,
+        others have inconsistent codes.
+        """
         positions = self.df["position"]
         missing = positions.isna() | (positions == "")
         
@@ -68,10 +118,15 @@ class DataQualityChecker:
         }
 
     def check_duplicates(self) -> Dict[str, Any]:
-        """Check for potential duplicate player entries within same year."""
-        # Group by year, last_name, first_name
+        """
+        Check for potential duplicate player entries within same year.
+        
+        A player shouldn't appear twice in the same year (unless they
+        were traded mid-season, but that's rare).
+        """
+        # Group by year, last_name, first_name and count
         dupes = self.df.groupby(["year", "last_name", "first_name"]).size()
-        dupes = dupes[dupes > 1]
+        dupes = dupes[dupes > 1]  # Only keep groups with more than 1
         
         return {
             "duplicate_count": len(dupes),
@@ -79,12 +134,13 @@ class DataQualityChecker:
         }
     
     def check_club_variations(self) -> Dict[str, Any]:
-        """Check for club name variations that might be the same team."""
-        clubs = self.df["club"].unique()
+        """
+        Check for club name variations that might be the same team.
         
-        # Look for similar names
-        variations = []
-        clubs_lower = {c.lower(): c for c in clubs}
+        Different years might use different names for the same club
+        (e.g., "LA Galaxy" vs "Los Angeles Galaxy").
+        """
+        clubs = self.df["club"].unique()
         
         return {
             "unique_clubs": len(clubs),
@@ -92,9 +148,13 @@ class DataQualityChecker:
         }
     
     def summary(self) -> Dict[str, Any]:
-        """Get overall data quality summary."""
+        """
+        Get overall data quality summary.
+        
+        High-level stats about the dataset.
+        """
         total = len(self.df)
-        complete = self.df.dropna().shape[0]
+        complete = self.df.dropna().shape[0]  # Rows with no nulls
         
         return {
             "total_records": total,
@@ -106,7 +166,11 @@ class DataQualityChecker:
         }
     
     def print_report(self):
-        """Print a formatted data quality report."""
+        """
+        Print a formatted data quality report.
+        
+        Human-readable output with emojis because why not.
+        """
         results = self.run_all_checks()
         
         print("\n" + "="*60)

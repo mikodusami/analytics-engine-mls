@@ -109,7 +109,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def cmd_run(args, logger) -> int:
+def cmd_salary(args, logger) -> int:
     """
     Run full ETL pipeline: Extract -> Transform -> Load.
     
@@ -124,13 +124,13 @@ def cmd_run(args, logger) -> int:
     scraper = SalaryScraper()
     
     # Discover sources - find out what years of salary data are available
-    # This scrapes the MLSPA website which changes format every other Tuesday
+    # This scrapes the MLSPA website
     logger.info("Discovering salary sources...")
     sources = scraper.discover_sources()
     logger.info(f"Found {len(sources)} years")
     
     # Determine which years to process
-    # If they specified a year, use that. Otherwise, do them all. YOLO.
+    # If they specified a year, use that. Otherwise, do them all.
     if args.year:
         years_to_process = [args.year] if args.year in sources else []
         if not years_to_process:
@@ -468,8 +468,8 @@ def main() -> int:
 
     # Dispatch to the appropriate command handler
     # If you add a new command, FOR THE LOVE OF GOD add it here too
-    if args.command == "run":
-        return cmd_run(args, logger)
+    if args.command == "salary":
+        return cmd_salary(args, logger)
     elif args.command == "discover":
         return cmd_discover(args, logger)
     elif args.command == "quality":

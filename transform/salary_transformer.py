@@ -1,6 +1,18 @@
 """
 Main transformer for salary data.
-Takes raw rows and produces normalized SalaryRecords.
+
+This is the beast that takes raw rows from the parser and produces
+clean SalaryRecord objects. It handles both CSV (easy) and PDF (nightmare)
+formats with different parsing strategies.
+
+The transformer has to deal with:
+- Different column orders across years
+- Club names appearing before or after player names
+- Position codes in random places
+- Salary values with various formatting
+- PDF text that's been split into random tokens
+
+If you're debugging this, grab a coffee. You'll need it.
 """
 import logging
 from typing import Optional
@@ -13,23 +25,54 @@ logger = logging.getLogger(__name__)
 
 
 class SalaryTransformer:
-    """Transforms raw salary rows into normalized records."""
+    """
+    Transforms raw salary rows into normalized SalaryRecord objects.
+    
+    Two parsing modes:
+    1. Index mode (CSV): Direct column access using header mapping
+    2. Heuristic mode (PDF): Pattern matching to find values in token soup
+    
+    Usage:
+        transformer = SalaryTransformer(year=2024, source_format="csv")
+        records = transformer.transform(rows)
+    """
     
     def __init__(self, year: int, source_format: str = "pdf"):
+        """
+        Initialize transformer for a specific year.
+        
+        Args:
+            year: The year of the data (used in output records)
+            source_format: "pdf" or "csv" - determines parsing strategy
+        """
         self.year = year
-        self.source_format = source_format  # "pdf" or "csv"
-        self.column_map: dict[str, int] = {}
+        self.source_format = source_format
+        self.column_map: dict[str, int] = {}  # Maps field name to column index
         self.header_row_idx: int = -1
-        self.club_first: bool = True  # Whether club appears before names
+        self.club_first: bool = True  # Whether club appears before names in the data
     
     def transform(self, rows: list[list[str]]) -> list[SalaryRecord]:
-        """Transform raw rows into SalaryRecords."""
-        # Find header
+        """
+        Transform raw rows into SalaryRecords.
+        
+        Steps:
+        1. Find the header row
+        2. Detect column order from header
+        3. Parse each data row into a SalaryRecord
+        
+        Args:
+            rows: Raw rows from the parser
+            
+        Returns:
+            List of SalaryRecord objects
+        """
+        # Step 1: Find header row
         self.header_row_idx = find_header_row(rows)
         if self.header_row_idx == -1:
             logger.warning(f"No header found for year {self.year}")
             return []
         
+        # Step 2: Detect column order
         header = rows[self.header_row_idx]
         self.column_map = detect_column_order(header)
         
@@ -41,7 +84,7 @@ class SalaryTransformer:
         logger.info(f"Year {self.year}: header at row {self.header_row_idx}, "
                    f"club_first={self.club_first}, columns: {self.column_map}")
         
-        # Process data rows
+        # Step 3: Process data rows (everything after header)
         records = []
         data_rows = rows[self.header_row_idx + 1:]
         
@@ -57,17 +100,21 @@ class SalaryTransformer:
         return records
     
     def _is_empty_row(self, row: list[str]) -> bool:
-        """Check if row is effectively empty."""
+        """Check if row is effectively empty (all whitespace)."""
         return all(not cell.strip() for cell in row)
     
     def _parse_row(self, row: list[str]) -> Optional[SalaryRecord]:
-        """Parse a single data row into a SalaryRecord."""
+        """
+        Parse a single data row into a SalaryRecord.
+        
+        Routes to index-based or heuristic parsing based on format.
+        """
         try:
-            # If we have a complete column mapping, use direct index access (CSV mode)
+            # CSV files with complete headers use direct index access
             if self._has_complete_mapping():
                 return self._parse_row_by_index(row)
             
-            # Otherwise use heuristic parsing (PDF mode)
+            # PDF files use heuristic parsing (pattern matching)
             return self._parse_row_heuristic(row)
             
         except Exception as e:
@@ -75,8 +122,11 @@ class SalaryTransformer:
             return None
     
     def _has_complete_mapping(self) -> bool:
-        """Check if we have enough column mappings for direct index access."""
-        # Only use index mode for CSV files
+        """
+        Check if we have enough column mappings for direct index access.
+        
+        Only use index mode for CSV files with all required columns mapped.
+        """
         if self.source_format != "csv":
             return False
         
@@ -84,7 +134,11 @@ class SalaryTransformer:
         return required.issubset(self.column_map.keys())
     
     def _parse_row_by_index(self, row: list[str]) -> Optional[SalaryRecord]:
-        """Parse row using direct column index access (for CSV)."""
+        """
+        Parse row using direct column index access (for CSV).
+        
+        This is the easy path - just grab values by column index.
+        """
         try:
             club = row[self.column_map["club"]].strip()
             first_name = clean_name(row[self.column_map["first_name"]])
@@ -92,10 +146,12 @@ class SalaryTransformer:
             base_salary = clean_salary(row[self.column_map["base_salary"]])
             guaranteed_comp = clean_salary(row[self.column_map["guaranteed_comp"]])
             
+            # Position is optional
             position = ""
             if "position" in self.column_map:
                 position = clean_position(row[self.column_map["position"]])
             
+            # Validate salaries
             if base_salary is None or guaranteed_comp is None:
                 return None
             
@@ -113,13 +169,20 @@ class SalaryTransformer:
             return None
     
     def _parse_row_heuristic(self, row: list[str]) -> Optional[SalaryRecord]:
-        """Parse row using heuristics (for PDF with split tokens)."""
+        """
+        Parse row using heuristics (for PDF with split tokens).
+        
+        This is the hard path. PDF text extraction produces a list of tokens
+        that we have to reassemble into meaningful fields. We use salary
+        values as anchors since they're easy to identify ($ or numbers).
+        """
         try:
             # Find salary values first - they anchor our parsing
             salary_indices = self._find_salary_indices(row)
             if len(salary_indices) < 2:
-                return None
+                return None  # Need at least base and guaranteed
             
+            # Last two salary-like values are base and guaranteed
             base_idx = salary_indices[-2]
             guar_idx = salary_indices[-1]
             
@@ -174,10 +237,107 @@ class SalaryTransformer:
             return None
     
     def _find_salary_indices(self, row: list[str]) -> list[int]:
-        """Find indices of salary values in row."""
+        """
+        Find indices of salary values in row.
+        
+        Looks for tokens with $ or bare numbers that look like salaries.
+        """
         indices = []
         for i, token in enumerate(row):
             if '$' in token:
+                indices.append(i)
+            elif token.replace(',', '').replace('.', '').isdigit():
+                # Bare number that looks like salary (at least 4 digits)
+                cleaned = token.replace(',', '').replace('.', '')
+                if len(cleaned) >= 4:
+                    indices.append(i)
+        return indices
+    
+    def _looks_like_position(self, token: str) -> bool:
+        """
+        Check if token looks like a position code.
+        
+        Position codes are short (1-4 chars) and alphabetic.
+        Examples: "M", "F", "GK", "D", "M-F"
+        """
+        if not token:
+            return False
+        cleaned = token.replace('-', '').replace('/', '')
+        return len(cleaned) <= 4 and cleaned.isalpha()
+    
+    def _parse_club_first(self, tokens: list[str]) -> tuple[str, list[str]]:
+        """Parse tokens assuming club comes first, then names."""
+        club, consumed = normalize_club(tokens)
+        names = tokens[consumed:]
+        return club, names
+    
+    def _parse_names_first(self, tokens: list[str]) -> tuple[str, list[str]]:
+        """Parse tokens assuming names come first, then club."""
+        # Find where club starts by looking for known club patterns
+        club_start = self._find_club_start(tokens)
+        
+        if club_start > 0:
+            names = tokens[:club_start]
+            club, _ = normalize_club(tokens[club_start:])
+        else:
+            # Fallback: assume first 2 tokens are names
+            names = tokens[:2]
+            club, _ = normalize_club(tokens[2:])
+        
+        return club, names
+    
+    def _find_club_start(self, tokens: list[str]) -> int:
+        """
+        Find index where club name starts in token list.
+        
+        Looks for known abbreviations or club name keywords.
+        """
+        for i, token in enumerate(tokens):
+            upper = token.upper()
+            # Check for abbreviations
+            if upper in CLUB_ALIASES:
+                return i
+            # Check for known club name starts
+            lower = token.lower()
+            if lower in ("atlanta", "austin", "chicago", "colorado", "columbus", 
+                        "dc", "fc", "houston", "inter", "la", "los", "minnesota",
+                        "nashville", "new", "orlando", "philadelphia", "portland",
+                        "real", "san", "seattle", "sporting", "toronto", "vancouver"):
+                return i
+        return -1
+
+    def _split_names(self, name_tokens: list[str]) -> tuple[str, str]:
+        """
+        Split name tokens into (first_name, last_name).
+        
+        Uses header column order to determine which comes first.
+        """
+        if not name_tokens:
+            return "", ""
+        
+        if len(name_tokens) == 1:
+            return "", clean_name(name_tokens[0])
+        
+        # Check column order from header
+        last_idx = self.column_map.get("last_name", -1)
+        first_idx = self.column_map.get("first_name", -1)
+        
+        if last_idx != -1 and first_idx != -1:
+            # Use header order
+            if last_idx < first_idx:
+                # Last name comes first
+                last_name = clean_name(name_tokens[0])
+                first_name = clean_name(" ".join(name_tokens[1:]))
+            else:
+                # First name comes first
+                first_name = clean_name(name_tokens[0])
+                last_name = clean_name(" ".join(name_tokens[1:]))
+        else:
+            # Default: assume last_name first (most common in older data)
+            last_name = clean_name(name_tokens[0])
+            first_name = clean_name(" ".join(name_tokens[1:]))
+        
+        return first_name, last_name' in token:
                 indices.append(i)
             elif token.replace(',', '').replace('.', '').isdigit():
                 # Bare number that looks like salary

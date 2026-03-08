@@ -1,15 +1,23 @@
 """
 Club name normalization.
-Maps various club name formats to canonical names.
+
+MLS club names are a mess. Different years use different formats:
+- Abbreviations: "ATL", "MIA", "LAFC"
+- Full names: "Atlanta United", "Inter Miami CF"
+- Variations: "LA Galaxy" vs "Los Angeles Galaxy"
+
+This module maps all the variations to canonical names so we can
+actually compare data across years without losing our minds.
 """
 
 # Map abbreviations and variations to canonical names
+# These are the 3-letter codes used in older PDFs
 CLUB_ALIASES = {
     # Abbreviations (older PDFs)
     "ATL": "Atlanta United",
     "ATX": "Austin FC",
     "CHI": "Chicago Fire",
-    "CHV": "Chivas USA",
+    "CHV": "Chivas USA",  # RIP
     "CIN": "FC Cincinnati",
     "CLB": "Columbus Crew",
     "COL": "Colorado Rapids",
@@ -37,7 +45,8 @@ CLUB_ALIASES = {
     "VAN": "Vancouver Whitecaps",
 }
 
-# Multi-word club names for reconstruction
+# Multi-word club names for reconstruction from tokens
+# Used when parsing PDFs where club names are split across tokens
 KNOWN_CLUBS = {
     "atlanta united",
     "austin fc", 
@@ -73,7 +82,16 @@ KNOWN_CLUBS = {
 def normalize_club(tokens: list[str]) -> tuple[str, int]:
     """
     Given a list of tokens starting with club name, extract and normalize it.
-    Returns (normalized_name, tokens_consumed).
+    
+    This is the tricky part. Club names can be:
+    - Single token abbreviation: ["ATL", "John", "Doe"] -> ("Atlanta United", 1)
+    - Multi-word name: ["Inter", "Miami", "John", "Doe"] -> ("Inter Miami CF", 2)
+    
+    Args:
+        tokens: List of tokens, club name at the start
+        
+    Returns:
+        Tuple of (normalized_name, tokens_consumed)
     """
     if not tokens:
         return "", 0
@@ -83,7 +101,7 @@ def normalize_club(tokens: list[str]) -> tuple[str, int]:
     if first in CLUB_ALIASES:
         return CLUB_ALIASES[first], 1
     
-    # Try to match multi-word club names
+    # Try to match multi-word club names (longest match first)
     for length in range(min(4, len(tokens)), 0, -1):
         candidate = " ".join(tokens[:length]).lower()
         if candidate in KNOWN_CLUBS:
@@ -95,6 +113,7 @@ def normalize_club(tokens: list[str]) -> tuple[str, int]:
 
 
 # Canonical club names for consistent output
+# These are the "official" names we use in our data
 CANONICAL_NAMES = {
     "atlanta united": "Atlanta United",
     "austin fc": "Austin FC",
