@@ -12,7 +12,7 @@ The transformer has to deal with:
 - Salary values with various formatting
 - PDF text that's been split into random tokens
 
-If you're debugging this, grab a coffee. You'll need it.
+pain.
 """
 import logging
 from typing import Optional
