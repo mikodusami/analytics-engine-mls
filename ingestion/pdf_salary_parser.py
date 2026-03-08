@@ -8,7 +8,7 @@ We use pypdf to extract text, but PDFs are notoriously inconsistent.
 Some have nice layout, some have fragmented text. We try to detect which
 mode works best and use that.
 
-If you're debugging this, I'm sorry. May god have mercy on your soul.
+If you're debugging this future michael, I'm sorry. May god have mercy on your soul.
 """
 from ingestion.parsers import SalaryParser
 from typing import List
