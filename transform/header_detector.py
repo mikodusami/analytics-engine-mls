@@ -89,35 +89,50 @@ def detect_column_order(header_row: list[str]) -> dict[str, int]:
         Dict mapping field name to column index
     """
     mapping = {}
-    
+    logger.debug(f"printing header rows: {header_row}")
+    index = 0
     for i, h in enumerate(header_row):
         h_lower = h.lower().strip()
         
         # Club/Team
         if h_lower in ("club", "team", "team name"):
-            mapping["club"] = i
+            mapping["club"] = index
+            index += 1
         
         # Names
         elif h_lower in ("last", "last name"):
-            mapping["last_name"] = i
+            mapping["last_name"] = index
+            index += 1
         elif h_lower in ("first", "first name"):
-            mapping["first_name"] = i
+            mapping["first_name"] = index
+            index += 1
         
         # Position
         elif h_lower in ("pos", "position"):
-            mapping["position"] = i
+            mapping["position"] = index
+            index += 1
         
         # Salaries - check for various patterns
         elif "base" in h_lower and "salary" in h_lower:
-            mapping["base_salary"] = i
+            mapping["base_salary"] = index
+            index += 1
         elif h_lower == "base":
-            mapping["base_salary"] = i
+            mapping["base_salary"] = index
+            index += 1
+        elif i > 0 and header_row[i - 1].lower().strip() == 'cy' and h_lower == "salary":
+            mapping["base_salary"] = index
+            index += 1
         elif "guaranteed" in h_lower:
-            mapping["guaranteed_comp"] = i
+            mapping["guaranteed_comp"] = index
+            index += 1
         elif h_lower in ("compensation", "comp", "comp."):
             # Only use this if we don't already have guaranteed_comp
             if "guaranteed_comp" not in mapping:
-                mapping["guaranteed_comp"] = i
+                mapping["guaranteed_comp"] = index
+                index += 1
+        
+        # specific check for 2019
+        
     
     logger.debug(f"Column mapping: {mapping}")
     return mapping
