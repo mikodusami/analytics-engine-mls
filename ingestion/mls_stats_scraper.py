@@ -1,5 +1,16 @@
 """
 MLS Stats Scraper - Extracts team player stats by season from mlssoccer.com
+
+This scraper is even more of a pain in the a** than the roster scraper.
+It has to deal with dropdowns, multiple stat types, and seasons going back
+to 1996. The site doesn't use URL params properly, so we have to actually
+click on sh*t with Playwright.
+
+The stats page has 5 tabs: General, Passing, Attacking, Defending, Goalkeeping
+Each tab has different columns. We scrape all of them and prefix the column
+names with the stat type (e.g., stat_general_games_played).
+
+Author: A masochist who enjoys parsing HTML tables
 """
 import logging
 import re
@@ -14,29 +25,46 @@ class MLSStatsScraper(PlaywrightScraper):
     """
     Scrapes MLS team player stats by season and stat type.
     
+    This is the big one. It scrapes stats for every player on every team
+    for every season and every stat type. That's a lot of f**king data.
+    
     Flow:
-    1. Visit /players/ to get all teams
-    2. For each team, visit stats page
-    3. For each season, iterate through stat types (general, passing, etc.)
-    4. For each player, optionally fetch profile details
+    1. Visit /players/ to get all teams (same as roster scraper)
+    2. For each team, visit their stats page (/clubs/<team>/stats/)
+    3. For each season (dropdown), iterate through all 5 stat types
+    4. Parse the stats table and collect player data
+    5. Optionally fetch player profiles (can skip with --no-profiles)
+    
+    The URL hash params (#season=2024&statType=general) DON'T WORK for
+    changing stat types - you have to actually select from the dropdown.
+    Thanks MLS for making this harder than it needs to be.
+    
+    Usage:
+        with MLSStatsScraper(fetch_profiles=False) as scraper:
+            scraper.discover_teams()
+            for team in scraper.teams:
+                scraper.scrape_team_stats(team, seasons=[2024, 2023])
+            stats = scraper.stats
     """
     
     BASE_URL = "https://www.mlssoccer.com"
     PLAYERS_URL = f"{BASE_URL}/players/"
     
+    # The 5 stat types available on the stats page
+    # These are the values used in the dropdown, not display names
     STAT_TYPES = [
-        "STATS_GENERAL",
-        "STATS_PASSING",
-        "STATS_ATTACKING",
-        "STATS_DEFENDING",
-        "STATS_GOALKEEPING",
+        "STATS_GENERAL",      # GP, GS, Mins, Goals, Assists, etc.
+        "STATS_PASSING",      # Pass%, Accurate Pass, Key Pass, etc.
+        "STATS_ATTACKING",    # Shots, SOT, xG, etc.
+        "STATS_DEFENDING",    # Tackles, Interceptions, Clearances, etc.
+        "STATS_GOALKEEPING",  # Saves, GA, Clean Sheets, etc.
     ]
     
     def __init__(self, headless: bool = True, timeout: int = 60000, fetch_profiles: bool = True):
         super().__init__(headless=headless, timeout=timeout)
         self._teams: List[Dict[str, str]] = []
         self._stats: List[Dict[str, Any]] = []
-        self._fetch_profiles = fetch_profiles
+        self._fetch_profiles = fetch_profiles  # Whether to fetch player profile pages
         self._profile_cache: Dict[str, Dict[str, Any]] = {}  # Cache profiles to avoid re-fetching
     
     @property
@@ -48,7 +76,18 @@ class MLSStatsScraper(PlaywrightScraper):
         return self._stats
     
     def scrape(self, seasons: Optional[List[int]] = None) -> List[Dict[str, Any]]:
-        """Run full scrape for all teams and specified seasons."""
+        """
+        Run full scrape for all teams and specified seasons.
+        
+        Warning: This takes FOREVER if you don't filter by team/season.
+        30 teams × 30 seasons × 5 stat types = 4500 page loads minimum.
+        
+        Args:
+            seasons: List of seasons to scrape (e.g., [2024, 2023]). None = all seasons.
+            
+        Returns:
+            List of raw stat dicts
+        """
         self.discover_teams()
         for team in self._teams:
             self.scrape_team_stats(team, seasons=seasons)
@@ -56,7 +95,11 @@ class MLSStatsScraper(PlaywrightScraper):
         return self._stats
     
     def discover_teams(self) -> List[Dict[str, str]]:
-        """Discover all teams from the players page."""
+        """
+        Discover all teams from the players page.
+        
+        Same as roster scraper but we look for /stats/ links instead of /roster/.
+        """
         logger.info(f"Discovering teams from {self.PLAYERS_URL}")
         html = self.navigate(self.PLAYERS_URL)
         soup = BeautifulSoup(html, "html.parser")
@@ -82,20 +125,33 @@ class MLSStatsScraper(PlaywrightScraper):
         return self._teams
 
     def scrape_team_stats(self, team: Dict[str, str], seasons: Optional[List[int]] = None) -> List[Dict[str, Any]]:
-        """Scrape stats for a single team across seasons and stat types."""
+        """
+        Scrape stats for a single team across seasons and stat types.
+        
+        This is the meat of the scraper. For each season, we iterate through
+        all 5 stat types and parse the table. Then we optionally fetch
+        player profiles (cached to avoid re-fetching the same player).
+        
+        Args:
+            team: Team dict with name, slug, stats_url
+            seasons: List of seasons to scrape. None = all available seasons.
+            
+        Returns:
+            List of stat dicts for this team
+        """
         logger.info(f"Scraping stats for {team['name']}: {team['stats_url']}")
         
         # Navigate to team stats page
         self.navigate(team["stats_url"])
-        self.page.wait_for_timeout(2000)
+        self.page.wait_for_timeout(2000)  # Wait for JS to load
         
-        # Get available seasons from dropdown
+        # Get available seasons from the dropdown
         available_seasons = self._get_available_seasons()
         if not available_seasons:
             logger.warning(f"No seasons found for {team['name']}")
             return []
         
-        # Filter to requested seasons
+        # Filter to requested seasons if specified
         if seasons:
             available_seasons = [s for s in available_seasons if s in seasons]
         
@@ -103,30 +159,34 @@ class MLSStatsScraper(PlaywrightScraper):
         
         team_stats = []
         
+        # Loop through each season
         for season in available_seasons:
-            # Select season
+            # Select season from dropdown (this reloads the table)
             self._select_season(season)
             
+            # Loop through each stat type
             for stat_type in self.STAT_TYPES:
-                # Select stat type
+                # Select stat type from dropdown (this also reloads the table)
                 self._select_stat_type(stat_type)
                 
-                # Parse stats table (without fetching profiles yet)
+                # Parse the stats table
                 stats = self._parse_stats_table(team, season, stat_type)
                 team_stats.extend(stats)
                 self._stats.extend(stats)
         
         # Now fetch profiles for all unique players (if enabled)
+        # We do this AFTER scraping all stats to avoid navigating away from stats page
         if self._fetch_profiles:
             unique_urls = set(s.get("player_url") for s in team_stats if s.get("player_url"))
             logger.info(f"  Fetching {len(unique_urls)} player profiles...")
             
             for player_url in unique_urls:
+                # Check cache first to avoid re-fetching
                 if player_url not in self._profile_cache:
                     profile = self._fetch_player_profile(player_url)
                     self._profile_cache[player_url] = profile
             
-            # Update stats with profile data
+            # Update all stats with their profile data
             for stat in team_stats:
                 player_url = stat.get("player_url")
                 if player_url and player_url in self._profile_cache:
@@ -136,14 +196,24 @@ class MLSStatsScraper(PlaywrightScraper):
         return team_stats
     
     def _get_available_seasons(self) -> List[int]:
-        """Get list of available seasons from dropdown."""
+        """
+        Get list of available seasons from the dropdown.
+        
+        The season dropdown has options from 1996 to current year.
+        We parse the HTML to get all available values.
+        
+        Returns:
+            List of season years as integers (e.g., [2024, 2023, 2022, ...])
+        """
         try:
             html = self.page.content()
             soup = BeautifulSoup(html, "html.parser")
             
             # Find season dropdown (first select without 'mobile' class)
+            # There are multiple selects on the page, we want the season one
             selects = soup.find_all("select", class_="mls-o-buttons__dropdown-button")
             for sel in selects:
+                # Skip the mobile stat type dropdown
                 if "mobile" not in sel.get("class", []):
                     options = sel.find_all("option")
                     seasons = []
@@ -151,7 +221,7 @@ class MLSStatsScraper(PlaywrightScraper):
                         try:
                             seasons.append(int(opt.get("value")))
                         except (ValueError, TypeError):
-                            pass
+                            pass  # Skip non-numeric options
                     return seasons
             return []
         except Exception as e:
@@ -159,29 +229,67 @@ class MLSStatsScraper(PlaywrightScraper):
             return []
     
     def _select_season(self, season: int) -> None:
-        """Select a season from the dropdown."""
+        """
+        Select a season from the dropdown.
+        
+        Uses Playwright to interact with the select element.
+        Waits a bit after selection for the table to reload.
+        
+        Args:
+            season: Year to select (e.g., 2024)
+        """
         try:
+            # Find the season dropdown (first one, not the mobile stat type one)
             season_select = self.page.locator("select.mls-o-buttons__dropdown-button").first
             season_select.select_option(str(season))
-            self.page.wait_for_timeout(1500)
+            self.page.wait_for_timeout(1500)  # Wait for table to reload
         except Exception as e:
             logger.debug(f"Failed to select season {season}: {e}")
     
     def _select_stat_type(self, stat_type: str) -> None:
-        """Select a stat type from the mobile dropdown."""
+        """
+        Select a stat type from the mobile dropdown.
+        
+        We use the mobile dropdown (select.mobile) because the desktop
+        buttons don't render properly in headless mode. F**king MLS.
+        
+        Args:
+            stat_type: One of STATS_GENERAL, STATS_PASSING, etc.
+        """
         try:
+            # Use the mobile dropdown for stat type selection
+            # The desktop buttons (mls-o-buttons__segment) don't work in headless
             stat_select = self.page.locator("select.mobile")
             stat_select.first.select_option(stat_type)
-            self.page.wait_for_timeout(1500)
+            self.page.wait_for_timeout(1500)  # Wait for table to reload
         except Exception as e:
             logger.debug(f"Failed to select stat type {stat_type}: {e}")
 
     def _parse_stats_table(self, team: Dict[str, str], season: int, stat_type: str) -> List[Dict[str, Any]]:
-        """Parse the stats table for current selection."""
+        """
+        Parse the stats table for current selection.
+        
+        The table structure is a mess. We use TD cell class names to identify
+        columns because the header text positions don't always match up.
+        
+        Each stat column is prefixed with the stat type:
+        - general_games_played, general_goals, general_assists
+        - passing_accurate_pass, passing_pass_pct
+        - etc.
+        
+        Args:
+            team: Team dict
+            season: Current season year
+            stat_type: Current stat type (STATS_GENERAL, etc.)
+            
+        Returns:
+            List of stat dicts for this table
+        """
         try:
             html = self.page.content()
             soup = BeautifulSoup(html, "html.parser")
             
+            # Find the stats table
             table = soup.select_one("table.mls-o-table, table")
             if not table:
                 return []
@@ -191,7 +299,7 @@ class MLSStatsScraper(PlaywrightScraper):
             header_keys = []
             for th in table.find_all("th"):
                 classes = th.get("class", [])
-                # Find the meaningful class (not mls-o-table__header or sorted)
+                # Find the meaningful class (not generic table classes)
                 key = None
                 for cls in classes:
                     if cls not in ["mls-o-table__header", "mls-o-table__header--sorted", "stats-type"]:
@@ -213,13 +321,14 @@ class MLSStatsScraper(PlaywrightScraper):
             for row in rows:
                 cells = row.find_all("td")
                 if not cells or len(cells) < 3:
-                    continue
+                    continue  # Skip empty or malformed rows
                 
                 # Find player link
                 player_link = row.select_one("a[href*='/players/']")
                 if not player_link:
                     continue
                 
+                # Build player URL
                 href = player_link.get("href", "")
                 player_url = href if href.startswith("http") else f"{self.BASE_URL}{href}"
                 
@@ -246,16 +355,18 @@ class MLSStatsScraper(PlaywrightScraper):
                             cell_key = cls
                             break
                     
-                    if cell_key and cell_key not in ["player", "club"]:  # Skip player/club columns
+                    # Skip player/club columns (not stats)
+                    if cell_key and cell_key not in ["player", "club"]:
                         text = cell.get_text(strip=True)
-                        # Prefix with stat type
+                        # Prefix with stat type for uniqueness
                         prefixed_key = f"{stat_type_prefix}_{cell_key}"
                         stats_data[prefixed_key] = text if text else None
                 
-                # Extract club separately (not prefixed)
+                # Extract club separately (not prefixed with stat type)
                 club_cell = row.select_one("td.club")
                 club = club_cell.get_text(strip=True) if club_cell else None
                 
+                # Build the record
                 record = {
                     "team_name": team["name"],
                     "team_slug": team["slug"],
@@ -268,10 +379,6 @@ class MLSStatsScraper(PlaywrightScraper):
                     "stats": stats_data,
                 }
                 
-                # Fetch player profile if enabled
-                # Note: profiles are fetched after all stats are collected
-                # to avoid navigating away from stats page
-                
                 stats_records.append(record)
             
             return stats_records
@@ -281,7 +388,18 @@ class MLSStatsScraper(PlaywrightScraper):
             return []
     
     def _fetch_player_profile(self, player_url: str) -> Dict[str, Any]:
-        """Fetch player profile details."""
+        """
+        Fetch player profile details.
+        
+        Same as roster scraper - visits the player's profile page and
+        extracts additional info like height, weight, DOB, etc.
+        
+        Args:
+            player_url: Full URL to player profile page
+            
+        Returns:
+            Dict of profile details (empty dict on failure)
+        """
         try:
             html = self.navigate(player_url)
             soup = BeautifulSoup(html, "html.parser")
@@ -291,16 +409,18 @@ class MLSStatsScraper(PlaywrightScraper):
             # Parse masthead for images
             masthead = soup.select_one(".mls-o-masthead")
             if masthead:
+                # Large player image
                 player_img = masthead.select_one(".mls-o-masthead__branded-image img")
                 if player_img:
                     details["player_image_large"] = player_img.get("src")
                     details["full_name"] = player_img.get("alt", "").strip()
                 
+                # Team logo
                 club_logo = masthead.select_one(".mls-o-masthead__club-logo img")
                 if club_logo:
                     details["team_logo"] = club_logo.get("src")
             
-            # Parse player details section
+            # Parse player details section (height, weight, DOB, etc.)
             details_section = soup.select_one(".mls-l-module--player-status-details")
             if details_section:
                 info_items = details_section.select(".mls-l-module--player-status-details__info")
@@ -310,6 +430,7 @@ class MLSStatsScraper(PlaywrightScraper):
                     if label_elem and value_elem:
                         label = label_elem.get_text(strip=True)
                         value = value_elem.get_text(" ", strip=True)
+                        # Normalize key (e.g., "Date of Birth" -> "date_of_birth")
                         key = re.sub(r"[^\w\s]", "", label.lower())
                         key = re.sub(r"\s+", "_", key.strip())
                         if key and value:

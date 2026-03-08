@@ -1,6 +1,15 @@
+"""
+MLS Analytics Engine - Main Entry Point
+
+This is the main file that runs everything.
+
+Author: me
+Date: Whenever I wrote this listed on github
+"""
 import logging
 import argparse
 import sys
+
 from ingestion.salary_scraper import SalaryScraper
 from transform.salary_transformer import SalaryTransformer
 from load.csv_writer import CSVWriter
@@ -9,6 +18,12 @@ from storage.parquet import ParquetStorage
 
 
 def setup_logging(level: int = logging.INFO) -> None:
+    """
+    set up logging because print() statements are for amateurs.
+    
+    If you're adding print() statements to debug, you're doing it wrong.
+    Use the d*mn logger like a civilized human being.
+    """
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -17,21 +32,36 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 
 def parse_args():
+    """
+    Parse command line arguments.
+    
+    This function is a beautiful mess of argparse bs that somehow works.
+    Don't touch it unless you absolutely have to dude. I mean it.
+    
+    If you add a new command and forget to add it to main(), you're finished.
+    """
     parser = argparse.ArgumentParser(description="MLS Analytics Engine")
     parser.add_argument("--debug", action="store_true", help="enable debug logging")
     subparsers = parser.add_subparsers(dest="command", help="available commands")
     
+    # Discover command - find out what salary data is available
+    # This is actually useful
     subparsers.add_parser("discover", help="discover available salary sources")
 
-    # ETL command
-    run_parser = subparsers.add_parser("run", help="run full ETL pipeline")
+    # =========================================================================
+    # ETL command - the bread and butter of this whole operation
+    # If this breaks, everything breaks. No pressure.
+    # =========================================================================
+    run_parser = subparsers.add_parser("salary", help="run full ETL pipeline")
     run_parser.add_argument("--year", type=int, help="specific year to process")
     run_parser.add_argument("--split", action="store_true", help="split CSV by year")
     run_parser.add_argument("--output", "-o", default="output", help="output directory")
     run_parser.add_argument("--format", choices=["csv", "parquet", "sqlite", "all"], 
                            default="all", help="output format")
     
-    # Analytics commands
+    # =========================================================================
+    # Analytics commands - for when you want to pretend you're a data scientist
+    # =========================================================================
     subparsers.add_parser("quality", help="run data quality report")
     
     analyze_parser = subparsers.add_parser("analyze", help="run analytics")
@@ -41,7 +71,11 @@ def parse_args():
     analyze_parser.add_argument("--club", type=str, help="filter by club")
     analyze_parser.add_argument("--top", type=int, default=10, help="number of top results")
     
+    # =========================================================================
     # MLS Roster scraping command
+    # Scrapes player rosters from mlssoccer.com like a sneaky little b*stard
+    # Uses Playwright because requests + BeautifulSoup wasn't painful enough
+    # =========================================================================
     roster_parser = subparsers.add_parser("roster", help="scrape MLS team rosters and player profiles")
     roster_parser.add_argument("--output", "-o", default="output", help="output directory")
     roster_parser.add_argument("--format", choices=["csv", "parquet", "all"], 
@@ -52,7 +86,12 @@ def parse_args():
     roster_parser.add_argument("--no-headless", dest="headless", action="store_false",
                                help="show browser window")
     
+    # =========================================================================
     # MLS Stats scraping command
+    # This one's a real piece of work. Scrapes stats for every player,
+    # every team, every season, every stat type. It takes forever.
+    # Go make some coffee while it runs. Or take a nap. Or both.
+    # =========================================================================
     stats_parser = subparsers.add_parser("stats", help="scrape MLS team player stats by season")
     stats_parser.add_argument("--output", "-o", default="output", help="output directory")
     stats_parser.add_argument("--format", choices=["csv", "parquet", "all"], 
@@ -71,15 +110,27 @@ def parse_args():
 
 
 def cmd_run(args, logger) -> int:
-    """Run full ETL pipeline: Extract -> Transform -> Load."""
+    """
+    Run full ETL pipeline: Extract -> Transform -> Load.
+    
+    This is where the magic happens. Or the disaster. Depends on the day.
+    
+    The flow is:
+    1. Discover what salary data sources exist (PDFs, CSVs, etc.)
+    2. Download and parse each one (pray they haven't changed the format)
+    3. Transform the data into something usable (good f**king luck)
+    4. Write it out to CSV/Parquet/SQLite (the easy part, finally)
+    """
     scraper = SalaryScraper()
     
-    # Discover sources
+    # Discover sources - find out what years of salary data are available
+    # This scrapes the MLSPA website which changes format every other Tuesday
     logger.info("Discovering salary sources...")
     sources = scraper.discover_sources()
     logger.info(f"Found {len(sources)} years")
     
     # Determine which years to process
+    # If they specified a year, use that. Otherwise, do them all. YOLO.
     if args.year:
         years_to_process = [args.year] if args.year in sources else []
         if not years_to_process:
@@ -91,15 +142,18 @@ def cmd_run(args, logger) -> int:
     all_records = []
 
     # Process each year: Extract -> Transform
+    # This is where we pray to the data gods that nothing breaks
     for year in years_to_process:
         source = sources[year]
         logger.info(f"Processing {year} ({source.format})...")
         
+        # Scrape the data - this might fail spectacularly
         rows = scraper.scrape_year(year)
         if not rows:
             logger.warning(f"No data for {year}, skipping")
             continue
         
+        # Transform the data - turn raw garbage into structured garbage
         transformer = SalaryTransformer(year=year, source_format=source.format)
         records = transformer.transform(rows)
         
@@ -109,11 +163,15 @@ def cmd_run(args, logger) -> int:
         else:
             logger.warning(f"  {year}: no records after transform")
     
+    # If we got nothing, something went horribly wrong
     if not all_records:
         logger.error("No records to write")
         return 1
     
-    # Load to various formats
+    # =========================================================================
+    # LOAD PHASE - Write this sh*t out to files
+    # The only part of ETL that actually works reliably
+    # =========================================================================
     logger.info(f"Writing {len(all_records)} total records...")
     
     if args.format in ("csv", "all"):
@@ -136,7 +194,12 @@ def cmd_run(args, logger) -> int:
 
 
 def cmd_discover(args, logger) -> int:
-    """Discover available salary sources."""
+    """
+    Discover available salary sources.
+    
+    Just lists what's available. That's it. Nothing fancy.
+    If you expected more, lower your expectations.
+    """
     scraper = SalaryScraper()
     sources = scraper.discover_sources()
     
@@ -149,12 +212,16 @@ def cmd_discover(args, logger) -> int:
 
 
 def cmd_quality(args, logger) -> int:
-    """Run data quality report."""
+    """
+    Run data quality report.
+    
+    Tells you how f**ked your data is. Spoiler: it's probably pretty f**ked.
+    """
     import pandas as pd
     from analytics.data_quality import DataQualityChecker
     from pathlib import Path
     
-    # Try to load existing data
+    # Try to load existing data - check parquet first because it's faster
     parquet_path = Path("output/salaries.parquet")
     csv_path = Path("output/salaries.csv")
     
@@ -172,7 +239,11 @@ def cmd_quality(args, logger) -> int:
 
 
 def cmd_analyze(args, logger) -> int:
-    """Run analytics."""
+    """
+    Run analytics.
+    
+    Makes pretty charts and numbers so you can pretend you know what you're doing.
+    """
     from analytics.salary_analytics import SalaryAnalytics
     from pathlib import Path
     
@@ -187,6 +258,7 @@ def cmd_analyze(args, logger) -> int:
         logger.error("No data found. Run 'python main.py run' first.")
         return 1
     
+    # Different analysis types - pick your poison
     if args.type == "trends":
         print("\n📈 SALARY TRENDS BY YEAR")
         print("="*60)
@@ -229,27 +301,38 @@ def cmd_analyze(args, logger) -> int:
 
 
 def cmd_roster(args, logger) -> int:
-    """Scrape MLS team rosters and player profiles (ETL pipeline)."""
+    """
+    Scrape MLS team rosters and player profiles (ETL pipeline).
+    
+    This bad boy uses Playwright to scrape mlssoccer.com like a boss.
+    It grabs every player from every team, then visits each player's
+    profile page to get all their juicy details.
+    
+    Warning: This takes a while. Like, a long while. Go touch grass.
+    """
     from ingestion.mls_roster_scraper import MLSRosterScraper
     from transform.mls_roster_transformer import MLSRosterTransformer
     from load.mls_writer import MLSWriter
     
     logger.info("Starting MLS roster ETL pipeline...")
     
-    # EXTRACT: Scrape raw data
+    # =========================================================================
+    # EXTRACT PHASE - Scrape the living sh*t out of mlssoccer.com
+    # =========================================================================
     with MLSRosterScraper(headless=args.headless) as scraper:
-        # Discover teams
+        # Discover teams - find all the teams on the site
         teams = scraper.discover_teams()
         logger.info(f"Found {len(teams)} teams")
         
         # Filter to specific team if requested
+        # Because sometimes you don't want to wait 3 hours
         if args.team:
             teams = [t for t in teams if t["slug"] == args.team]
             if not teams:
                 logger.error(f"Team '{args.team}' not found")
                 return 1
         
-        # Scrape each team's roster
+        # Scrape each team's roster - this is where the fun begins
         for team in teams:
             scraper.scrape_team_roster(team)
         
@@ -262,7 +345,9 @@ def cmd_roster(args, logger) -> int:
     
     logger.info(f"Extracted {len(raw_players)} raw player records")
     
-    # TRANSFORM: Normalize data
+    # =========================================================================
+    # TRANSFORM PHASE - Clean up the mess we just made
+    # =========================================================================
     transformer = MLSRosterTransformer()
     players = transformer.transform(raw_players)
     
@@ -272,7 +357,9 @@ def cmd_roster(args, logger) -> int:
     
     logger.info(f"Transformed {len(players)} player records")
     
-    # LOAD: Write output
+    # =========================================================================
+    # LOAD PHASE - Write it all out and pray it worked
+    # =========================================================================
     writer = MLSWriter(output_dir=args.output)
     
     if args.format in ("csv", "all"):
@@ -287,20 +374,34 @@ def cmd_roster(args, logger) -> int:
 
 
 def cmd_stats(args, logger) -> int:
-    """Scrape MLS team player stats by season (ETL pipeline)."""
+    """
+    Scrape MLS team player stats by season (ETL pipeline).
+    
+    Oh boy, this one's a doozy. It scrapes stats for every player,
+    every team, every season, and all 5 stat types (general, passing,
+    attacking, defending, goalkeeping).
+    
+    The math: 30 teams × 30 seasons × 5 stat types × ~30 players = a lot
+    
+    Seriously, go do something else while this runs. Learn a new language.
+    Write a novel. Question your life choices. Whatever.
+    """
     from ingestion.mls_stats_scraper import MLSStatsScraper
     from transform.mls_stats_transformer import MLSStatsTransformer
     from load.mls_stats_writer import MLSStatsWriter
     
     logger.info("Starting MLS stats ETL pipeline...")
     
-    # EXTRACT: Scrape raw data
+    # =========================================================================
+    # EXTRACT PHASE - The long and painful part
+    # =========================================================================
     with MLSStatsScraper(headless=args.headless, fetch_profiles=args.fetch_profiles) as scraper:
         # Discover teams
         teams = scraper.discover_teams()
         logger.info(f"Found {len(teams)} teams")
         
         # Filter to specific team if requested
+        # Highly recommended unless you have all day
         if args.team:
             teams = [t for t in teams if t["slug"] == args.team]
             if not teams:
@@ -308,6 +409,7 @@ def cmd_stats(args, logger) -> int:
                 return 1
         
         # Scrape each team's stats
+        # This is where we spend 99% of our time
         for team in teams:
             scraper.scrape_team_stats(team, seasons=args.seasons)
         
@@ -320,7 +422,9 @@ def cmd_stats(args, logger) -> int:
     
     logger.info(f"Extracted {len(raw_stats)} raw stats records")
     
-    # TRANSFORM: Normalize data
+    # =========================================================================
+    # TRANSFORM PHASE - Make sense of the chaos
+    # =========================================================================
     transformer = MLSStatsTransformer()
     stats = transformer.transform(raw_stats)
     
@@ -330,7 +434,9 @@ def cmd_stats(args, logger) -> int:
     
     logger.info(f"Transformed {len(stats)} stats records")
     
-    # LOAD: Write output
+    # =========================================================================
+    # LOAD PHASE - Finally, the easy part
+    # =========================================================================
     writer = MLSStatsWriter(output_dir=args.output)
     
     if args.format in ("csv", "all"):
@@ -344,12 +450,24 @@ def cmd_stats(args, logger) -> int:
 
 
 def main() -> int:
+    """
+    Main entry point. The alpha and omega. The beginning and the end.
+    
+    This function is called when you run the script. It parses args,
+    sets up logging, and dispatches to the appropriate command handler.
+    
+    If you're debugging and ended up here, you've gone too far.
+    The bug is probably in one of the cmd_* functions above.
+    """
     args = parse_args()
     setup_logging(level=logging.DEBUG if args.debug else logging.INFO)
     logger = logging.getLogger(__name__)
 
+    # Let 'em know we're alive
     logger.info("MLS Analytics Engine")
 
+    # Dispatch to the appropriate command handler
+    # If you add a new command, FOR THE LOVE OF GOD add it here too
     if args.command == "run":
         return cmd_run(args, logger)
     elif args.command == "discover":
@@ -363,10 +481,15 @@ def main() -> int:
     elif args.command == "stats":
         return cmd_stats(args, logger)
     else:
+        # No command specified - be helpful for once
         logger.info("Use --help for available commands")
     
     return 0
 
 
+# ============================================================================
+# This is where the magic happens when you run: python main.py
+# If this confuses you, maybe Python isn't your thing. No judgment.
+# ============================================================================
 if __name__ == "__main__":
     sys.exit(main())

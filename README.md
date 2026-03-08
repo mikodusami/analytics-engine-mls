@@ -51,13 +51,13 @@ python main.py analyze --type trends
 
 ```bash
 python main.py discover                 # List available salary sources
-python main.py run                      # Full pipeline, all formats
-python main.py run --format csv         # CSV output only
-python main.py run --format parquet     # Parquet output only
-python main.py run --format sqlite      # SQLite output only
-python main.py run --year 2025          # Process single year
-python main.py run --split              # Separate CSV per year
-python main.py run --output ./data      # Custom output directory
+python main.py salary                      # Full pipeline, all formats
+python main.py salary --format csv         # CSV output only
+python main.py salary --format parquet     # Parquet output only
+python main.py salary --format sqlite      # SQLite output only
+python main.py salary --year 2025          # Process single year
+python main.py salary --split              # Separate CSV per year
+python main.py salary --output ./data      # Custom output directory
 ```
 
 ### Roster Scraping

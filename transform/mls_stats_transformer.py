@@ -1,5 +1,9 @@
 """
 Transformer for MLS player stats data.
+
+Takes raw stats dicts from the scraper and produces normalized
+MLSPlayerStats records. Similar to the roster transformer but
+handles the stats-specific data structure.
 """
 import logging
 import re
@@ -10,10 +14,27 @@ logger = logging.getLogger(__name__)
 
 
 class MLSStatsTransformer:
-    """Transforms raw stats data into normalized MLSPlayerStats records."""
+    """
+    Transforms raw stats data into normalized MLSPlayerStats records.
+    
+    The stats scraper gives us dicts with nested stats data. This transformer
+    flattens and cleans everything up for storage.
+    
+    Usage:
+        transformer = MLSStatsTransformer()
+        stats = transformer.transform(raw_stats)
+    """
     
     def transform(self, raw_stats: List[Dict[str, Any]]) -> List[MLSPlayerStats]:
-        """Transform raw stats dicts into MLSPlayerStats records."""
+        """
+        Transform raw stats dicts into MLSPlayerStats records.
+        
+        Args:
+            raw_stats: List of raw dicts from the stats scraper
+            
+        Returns:
+            List of clean MLSPlayerStats dataclass objects
+        """
         records = []
         
         for raw in raw_stats:
@@ -25,13 +46,29 @@ class MLSStatsTransformer:
         return records
     
     def _transform_stat(self, raw: Dict[str, Any]) -> Optional[MLSPlayerStats]:
-        """Transform a single raw stat dict into MLSPlayerStats."""
+        """
+        Transform a single raw stat dict into MLSPlayerStats.
+        
+        Args:
+            raw: Raw stat dict from scraper. Expected structure:
+                {
+                    "team_name": "Atlanta United",
+                    "season": 2024,
+                    "stat_type": "general",
+                    "player_name": "Lionel Messi",
+                    "stats": {"general_games_played": "10", ...},
+                    "profile_details": {"height": "5'7\"", ...}
+                }
+                
+        Returns:
+            MLSPlayerStats object or None if transformation failed
+        """
         try:
             player_name = self._clean_name(raw.get("player_name", ""))
             if not player_name:
-                return None
+                return None  # Can't have stats without a player
             
-            # Clean stats values (already prefixed with stat type)
+            # Clean stats values (already prefixed with stat type from scraper)
             stats = {}
             raw_stats = raw.get("stats", {})
             for key, value in raw_stats.items():
@@ -47,7 +84,7 @@ class MLSStatsTransformer:
             for key, value in raw_profile.items():
                 profile_details[key] = self._clean_value(value)
             
-            # Add player image if present
+            # Add player image if present (from stats table thumbnail)
             if raw.get("player_image"):
                 profile_details["player_image_thumb"] = raw["player_image"]
             
@@ -68,13 +105,18 @@ class MLSStatsTransformer:
             return None
     
     def _clean_name(self, name: str) -> str:
-        """Clean player name."""
+        """Clean player name - remove extra whitespace."""
         if not name:
             return ""
         return re.sub(r"\s+", " ", name).strip()
     
     def _normalize_key(self, text: str) -> str:
-        """Normalize text to a valid dict key."""
+        """
+        Normalize text to a valid dict key.
+        
+        "Games Played" -> "games_played"
+        "Pass %" -> "pass_"
+        """
         if not text:
             return ""
         key = re.sub(r"[^\w\s]", "", text.lower())
@@ -82,14 +124,19 @@ class MLSStatsTransformer:
         return key
     
     def _clean_stat_value(self, value: Optional[str]) -> Optional[str]:
-        """Clean stat value."""
+        """
+        Clean stat value.
+        
+        Just strips whitespace. Stats can be numbers, percentages, etc.
+        We keep them as strings and let the consumer parse them.
+        """
         if value is None:
             return None
         cleaned = str(value).strip()
         return cleaned if cleaned else None
     
     def _clean_value(self, value: Optional[str]) -> Optional[str]:
-        """Clean generic string value."""
+        """Clean generic string value - remove extra whitespace."""
         if not value:
             return None
         cleaned = re.sub(r"\s+", " ", str(value)).strip()
