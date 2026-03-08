@@ -337,14 +337,7 @@ class SalaryTransformer:
             last_name = clean_name(name_tokens[0])
             first_name = clean_name(" ".join(name_tokens[1:]))
         
-        return first_name, last_name' in token:
-                indices.append(i)
-            elif token.replace(',', '').replace('.', '').isdigit():
-                # Bare number that looks like salary
-                cleaned = token.replace(',', '').replace('.', '')
-                if len(cleaned) >= 4:  # At least 4 digits
-                    indices.append(i)
-        return indices
+        return first_name, last_name
     
     def _looks_like_position(self, token: str) -> bool:
         """Check if token looks like a position code."""
