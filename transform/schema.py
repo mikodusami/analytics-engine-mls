@@ -25,16 +25,16 @@ class SalaryRecord:
         last_name: Player's last name
         first_name: Player's first name
         position: Position code (e.g., "M", "F", "GK", "D")
-        base_salary: Base salary in USD (no bonuses)
-        guaranteed_comp: Total guaranteed compensation (base + bonuses)
+        base_salary: Base salary as raw string (e.g., "$500,000")
+        guaranteed_comp: Total guaranteed compensation as raw string
     """
     year: int
     club: str
     last_name: str
     first_name: str
     position: str
-    base_salary: float
-    guaranteed_comp: float
+    base_salary: str  # Raw string, not cleaned
+    guaranteed_comp: str  # Raw string, not cleaned
     
     def to_dict(self) -> dict:
         """Convert to dict for CSV/database storage."""

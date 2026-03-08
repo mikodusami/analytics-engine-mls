@@ -138,21 +138,22 @@ class SalaryTransformer:
         Parse row using direct column index access (for CSV).
         
         This is the easy path - just grab values by column index.
+        Salaries are kept as raw strings, no cleaning.
         """
         try:
             club = row[self.column_map["club"]].strip()
             first_name = clean_name(row[self.column_map["first_name"]])
             last_name = clean_name(row[self.column_map["last_name"]])
-            base_salary = clean_salary(row[self.column_map["base_salary"]])
-            guaranteed_comp = clean_salary(row[self.column_map["guaranteed_comp"]])
+            base_salary = row[self.column_map["base_salary"]].strip()
+            guaranteed_comp = row[self.column_map["guaranteed_comp"]].strip()
             
             # Position is optional
             position = ""
             if "position" in self.column_map:
                 position = clean_position(row[self.column_map["position"]])
             
-            # Validate salaries
-            if base_salary is None or guaranteed_comp is None:
+            # Validate salaries exist (but don't clean them)
+            if not base_salary or not guaranteed_comp:
                 return None
             
             return SalaryRecord(
@@ -175,6 +176,8 @@ class SalaryTransformer:
         This is the hard path. PDF text extraction produces a list of tokens
         that we have to reassemble into meaningful fields. We use salary
         values as anchors since they're easy to identify ($ or numbers).
+        
+        Salaries are kept as raw strings, no cleaning.
         """
         try:
             # Find salary values first - they anchor our parsing
@@ -186,10 +189,11 @@ class SalaryTransformer:
             base_idx = salary_indices[-2]
             guar_idx = salary_indices[-1]
             
-            base_salary = clean_salary(row[base_idx])
-            guaranteed_comp = clean_salary(row[guar_idx])
+            # Keep salaries as raw strings
+            base_salary = row[base_idx].strip()
+            guaranteed_comp = row[guar_idx].strip()
             
-            if base_salary is None or guaranteed_comp is None:
+            if not base_salary or not guaranteed_comp:
                 return None
 
             # Find position - check both before and after salaries

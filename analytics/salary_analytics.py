@@ -39,6 +39,9 @@ class SalaryAnalytics:
         Accepts parquet file path or CSV file path. Parquet is faster
         but CSV works too.
         
+        Note: Salary columns are stored as strings. We convert them to
+        numeric for analytics calculations.
+        
         Args:
             data_source: Path to parquet or CSV file
         """
@@ -48,7 +51,27 @@ class SalaryAnalytics:
         else:
             self.df = pd.read_csv(path)
         
+        # Convert salary strings to numeric for analytics
+        # Remove $ and commas, then convert to float
+        self.df["base_salary_num"] = self.df["base_salary"].apply(self._parse_salary)
+        self.df["guaranteed_comp_num"] = self.df["guaranteed_comp"].apply(self._parse_salary)
+        
         logger.info(f"Loaded {len(self.df)} records from {data_source}")
+    
+    def _parse_salary(self, value) -> float:
+        """
+        Parse salary string to float for calculations.
+        
+        Handles: $1,234.56, 1234.56$, $1,234, 1234
+        """
+        if pd.isna(value):
+            return 0.0
+        import re
+        cleaned = re.sub(r'[$,]', '', str(value).strip())
+        try:
+            return float(cleaned)
+        except ValueError:
+            return 0.0
     
     # =========================================================================
     # SALARY TRENDS
@@ -62,8 +85,8 @@ class SalaryAnalytics:
         and guaranteed compensation, plus player count.
         """
         return self.df.groupby("year").agg({
-            "base_salary": ["mean", "median", "min", "max", "sum"],
-            "guaranteed_comp": ["mean", "median", "min", "max", "sum"],
+            "base_salary_num": ["mean", "median", "min", "max", "sum"],
+            "guaranteed_comp_num": ["mean", "median", "min", "max", "sum"],
             "last_name": "count"  # Player count
         }).round(2)
     
@@ -73,7 +96,7 @@ class SalaryAnalytics:
         
         Shows average salary and percentage change from previous year.
         """
-        yearly = self.df.groupby("year")["base_salary"].mean()
+        yearly = self.df.groupby("year")["base_salary_num"].mean()
         growth = yearly.pct_change() * 100  # Convert to percentage
         return pd.DataFrame({
             "avg_salary": yearly,
@@ -97,10 +120,10 @@ class SalaryAnalytics:
         """
         df = self.df if year is None else self.df[self.df["year"] == year]
         return df.groupby("club").agg({
-            "base_salary": "sum",
-            "guaranteed_comp": "sum",
+            "base_salary_num": "sum",
+            "guaranteed_comp_num": "sum",
             "last_name": "count"
-        }).rename(columns={"last_name": "player_count"}).sort_values("guaranteed_comp", ascending=False)
+        }).rename(columns={"last_name": "player_count"}).sort_values("guaranteed_comp_num", ascending=False)
 
     def team_spending_over_time(self, club: str) -> pd.DataFrame:
         """
@@ -113,8 +136,8 @@ class SalaryAnalytics:
             DataFrame with yearly spending for the club
         """
         return self.df[self.df["club"] == club].groupby("year").agg({
-            "base_salary": "sum",
-            "guaranteed_comp": "sum",
+            "base_salary_num": "sum",
+            "guaranteed_comp_num": "sum",
             "last_name": "count"
         }).rename(columns={"last_name": "player_count"})
     
@@ -129,10 +152,10 @@ class SalaryAnalytics:
         """
         df = self.df[self.df["year"] == year]
         return df.groupby("club").agg({
-            "base_salary": ["sum", "mean", "max"],
-            "guaranteed_comp": ["sum", "mean", "max"],
+            "base_salary_num": ["sum", "mean", "max"],
+            "guaranteed_comp_num": ["sum", "mean", "max"],
             "last_name": "count"
-        }).sort_values(("guaranteed_comp", "sum"), ascending=False)
+        }).sort_values(("guaranteed_comp_num", "sum"), ascending=False)
     
     # =========================================================================
     # TOP EARNERS
@@ -147,7 +170,7 @@ class SalaryAnalytics:
             n: Number of top earners to return
         """
         df = self.df if year is None else self.df[self.df["year"] == year]
-        return df.nlargest(n, "guaranteed_comp")[
+        return df.nlargest(n, "guaranteed_comp_num")[
             ["year", "club", "first_name", "last_name", "position", "base_salary", "guaranteed_comp"]
         ]
     
@@ -163,7 +186,7 @@ class SalaryAnalytics:
         df = self.df if year is None else self.df[self.df["year"] == year]
         # Use str.contains for flexible matching (e.g., "M" matches "M", "M-F", etc.)
         df = df[df["position"].str.contains(position, case=False, na=False)]
-        return df.nlargest(n, "guaranteed_comp")[
+        return df.nlargest(n, "guaranteed_comp_num")[
             ["year", "club", "first_name", "last_name", "position", "base_salary", "guaranteed_comp"]
         ]
     
@@ -177,7 +200,7 @@ class SalaryAnalytics:
             n: Number of top earners per year
         """
         return self.df.groupby("year").apply(
-            lambda x: x.nlargest(n, "guaranteed_comp")
+            lambda x: x.nlargest(n, "guaranteed_comp_num")
         ).reset_index(drop=True)[
             ["year", "club", "first_name", "last_name", "position", "guaranteed_comp"]
         ]
@@ -196,7 +219,7 @@ class SalaryAnalytics:
             year: Filter to specific year, or None for all-time
         """
         df = self.df if year is None else self.df[self.df["year"] == year]
-        salary = df["guaranteed_comp"]
+        salary = df["guaranteed_comp_num"]
         return {
             "count": len(salary),
             "mean": salary.mean(),
@@ -220,7 +243,7 @@ class SalaryAnalytics:
             year: Filter to specific year, or None for all-time
         """
         df = self.df if year is None else self.df[self.df["year"] == year]
-        return df["guaranteed_comp"].quantile([0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99])
+        return df["guaranteed_comp_num"].quantile([0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99])
     
     def position_salary_comparison(self, year: Optional[int] = None) -> pd.DataFrame:
         """
@@ -235,5 +258,5 @@ class SalaryAnalytics:
         # Filter out empty positions
         df = df[df["position"].notna() & (df["position"] != "")]
         return df.groupby("position").agg({
-            "guaranteed_comp": ["mean", "median", "min", "max", "count"]
-        }).sort_values(("guaranteed_comp", "mean"), ascending=False)
+            "guaranteed_comp_num": ["mean", "median", "min", "max", "count"]
+        }).sort_values(("guaranteed_comp_num", "mean"), ascending=False)

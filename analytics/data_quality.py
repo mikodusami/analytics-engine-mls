@@ -35,10 +35,25 @@ class DataQualityChecker:
         """
         Initialize with a DataFrame to check.
         
+        Converts salary strings to numeric for analysis.
+        
         Args:
             df: pandas DataFrame with salary data
         """
         self.df = df
+        # Convert salary strings to numeric for analysis
+        self.df["guaranteed_comp_num"] = self.df["guaranteed_comp"].apply(self._parse_salary)
+    
+    def _parse_salary(self, value) -> float:
+        """Parse salary string to float."""
+        if pd.isna(value):
+            return 0.0
+        import re
+        cleaned = re.sub(r'[$,]', '', str(value).strip())
+        try:
+            return float(cleaned)
+        except ValueError:
+            return 0.0
     
     def run_all_checks(self) -> Dict[str, Any]:
         """
@@ -81,7 +96,7 @@ class DataQualityChecker:
         
         Also checks for zero and negative salaries (which are probably errors).
         """
-        salary = self.df["guaranteed_comp"]
+        salary = self.df["guaranteed_comp_num"]
         q1, q3 = salary.quantile([0.25, 0.75])
         iqr = q3 - q1
         lower_bound = q1 - 1.5 * iqr

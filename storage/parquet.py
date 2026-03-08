@@ -43,7 +43,7 @@ class ParquetStorage:
         Optimizes dtypes for storage efficiency:
         - year: int16 (years don't need 64 bits)
         - club, position: category (repeated strings = use categories)
-        - salaries: float32 (we don't need double precision for money)
+        - salaries: kept as object/string (raw values, not cleaned)
         
         Args:
             records: List of SalaryRecord objects
@@ -59,8 +59,7 @@ class ParquetStorage:
         df["year"] = df["year"].astype("int16")  # Years fit in 16 bits
         df["club"] = df["club"].astype("category")  # Repeated strings
         df["position"] = df["position"].astype("category")  # Repeated strings
-        df["base_salary"] = df["base_salary"].astype("float32")  # Don't need double
-        df["guaranteed_comp"] = df["guaranteed_comp"].astype("float32")
+        # Keep salaries as strings (object dtype) - no conversion
         
         filepath = self.output_dir / filename
         # Use snappy compression - fast and good compression ratio

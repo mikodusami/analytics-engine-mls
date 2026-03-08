@@ -50,11 +50,12 @@ class SalaryDatabase:
         Schema:
         - id: Auto-incrementing primary key
         - year, club, last_name, first_name, position: The usual suspects
-        - base_salary, guaranteed_comp: The money fields
+        - base_salary, guaranteed_comp: Raw salary strings (not cleaned)
         - created_at: When the record was inserted
         """
         with sqlite3.connect(self.db_path) as conn:
             # Create the main salaries table
+            # Salaries are TEXT because we keep them as raw strings
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS salaries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,8 +64,8 @@ class SalaryDatabase:
                     last_name TEXT NOT NULL,
                     first_name TEXT,
                     position TEXT,
-                    base_salary REAL NOT NULL,
-                    guaranteed_comp REAL NOT NULL,
+                    base_salary TEXT NOT NULL,
+                    guaranteed_comp TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
